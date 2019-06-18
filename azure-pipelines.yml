@@ -1,0 +1,12 @@
+
+jobs:
+- job: Linux
+  pool:
+    vmImage: 'ubuntu-16.04'
+  steps:
+  - task: Docker@2
+    inputs:
+      containerRegistry: 'docker.io'
+      command: 'login'
+  - script: docker-compose pull stretch
+  - script: docker-compose run --rm stretch scripts/build-qbs-with-qbs.sh
