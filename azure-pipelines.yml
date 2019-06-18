@@ -1,6 +1,17 @@
 
 jobs:
-- job: Linux
+- job: Build with Qbs on Debian stretch
+  pool:
+    vmImage: 'ubuntu-16.04'
+  steps:
+  - task: Docker@2
+    inputs:
+      containerRegistry: 'docker.io'
+      command: 'login'
+  - script: docker-compose pull stretch
+  - script: docker-compose run --rm stretch scripts/build-qbs-with-qmake.sh
+
+- job: Build with qmake on Debian stretch
   pool:
     vmImage: 'ubuntu-16.04'
   steps:
@@ -10,3 +21,17 @@ jobs:
       command: 'login'
   - script: docker-compose pull stretch
   - script: docker-compose run --rm stretch scripts/build-qbs-with-qbs.sh
+
+
+- job: Build with Qbs on macOS
+  pool:
+    vmImage: 'macOS-10.14'
+    steps:
+      - script: brew link qt5 --force # link qmake to /usr/local/bin
+      - script: export PATH="/usr/local/opt/ccache/libexec:$PATH"
+      - script: qbs --version
+      - script: qbs setup-toolchains --detect
+      - script: qbs setup-qt /usr/local/bin/qmake qt
+      - script: qbs config qt.baseProfile xcode-macosx-x86_64
+      - script: qbs config defaultProfile qt
+      - script: scripts/build-qbs-with-qbs.sh
