@@ -1,8 +1,22 @@
+###############################################################################
+# Re-usable nodes
+###############################################################################
+
 #
-# Required environment variables in the travis config
+# Store intermediate pipeline artifacts on github
 #
-# DOCKER_USERNAME
-#
+_store_on_github: &_store_on_github
+  provider: releases
+  api_key:
+    secure: Pdx0jLJ8x7NhBZ9s60Xat4kdNpQxq7AgdnZX+wqrzbCOa7GHtNIkA73cM9TFb8BidtMEV//P7zQ78AeM8ve/+PKzWRg6ElD+mnMLTw5CvcZlG79ljBUHf9Tllb92l0A4m7mg2cGacH+egja8za74+E9mGslMW3buxpxnH12+HzGhMFMtinBFnAzkys8JoJy5dphvNLplNUJkC/YsriSIDm6w8/HR7ptuSu4WkHSgo41SNciU1czzk8Ise6VFR9Uz9DgJDH04R0/6XJrft/2Zf/l4/0iH3mfQzW/gvHpYKvFGu5KInqTeXO56qYE1v4egEmbFcA/ZC6jFyLTCYA/Towz6Gep7/krm/GdrGTo/6zasj0TE87BUSo5+u7fWs+JGNAWLfJzwCw4U9W1/KYGTC9v6cAqc55EqlJW+0AHtdU9svrHsPE8ADiRZzEoBt29+Xph3X19aLQMKIh6GLtIyEL36SIDsTGtp1EVmAH9yH0vSocaAMvdZDZKr2yennZG456ZwuisfsKQjFGQ9p3IpTOWf2tIAunuKePSW7CfkGPDxPsNWRJHVjGW5+oJ4Wui4yL7McOFY8WsCJpYaZTnss6MribYVR59KbUl0/vzDM5xvcevml7FaqOCheNt84Zi8M5YptIrnfl1vWblsvIK8oMOCXUlBditz/4JhcQk9zME=
+  skip_cleanup: true
+  on:
+    all_branches: true
+
+###############################################################################
+# Begin of pipeline
+###############################################################################
+
 language: cpp
 
 git:
@@ -11,36 +25,57 @@ git:
 env:
   global:
     - QT_INSTALL_DIR=~/Qt
+    - QT_VERSION=5.12.5
+    - QTCREATOR_VERSION=4.9.2
 
 stages:
-  - name: Build Qbs and and run autotests
+  - name: Build
+  - name: Test
 
 jobs:
   include:
+
+###############################################################################
+# Build stage
+###############################################################################
+
     - &build-on-bionic
-      stage: Build Qbs and and run autotests
+      stage: Build
       name: With Qbs on Ubuntu bionic (linux_gcc64)
-      env:
-        SERVICE=bionic
       services:
         - docker
       before_install:
-        - docker-compose pull ${SERVICE}
+        - docker-compose pull bionic
       script:
-        - docker-compose run --rm ${SERVICE} scripts/build-qbs-with-qbs.sh
+        - docker-compose run bionic qbs build config:release
+      before_deploy:
+        - tar zcf qbs_${TRAVIS_BUILD_NUMBER}_linux.tar.gz -C release/install-root .
+      deploy:
+        <<: *_store_on_github
+        file: qbs_${TRAVIS_BUILD_NUMBER}_linux.tar.gz
 
     - <<: *build-on-bionic
       name: With QMake on Ubuntu bionic (linux_gcc64)
       script:
-        - docker-compose run --rm ${SERVICE} scripts/build-qbs-with-qmake.sh
+        - docker-compose run bionic scripts/build-qbs-with-qmake.sh
 
     - <<: *build-on-bionic
       name: With Qbs on Ubuntu bionic (mingw32_w64)
       script:
-        - docker-compose run --rm ${SERVICE} qbs build profile:qt-mingw32_w64
+        - docker-compose run bionic qbs build profile:qt-mingw32_w64 config:release
+      before_deploy:
+        - tar zcf qbs_${TRAVIS_BUILD_NUMBER}_mingw.tar.gz -C release/install-root .
+      deploy:
+        <<: *_store_on_github
+        file: qbs_${TRAVIS_BUILD_NUMBER}_mingw.tar.gz
+
+    - <<: *build-on-bionic
+      name: Documentation
+      script:
+        - docker-compose run bionic qbs build -p "qbs documentation"
 
     - &build-on-macos
-      stage: Build Qbs and and run autotests
+      stage: Build
       name: With Qbs on macOS (xcode 10.3)
       os: osx
       osx_image: xcode10.3
@@ -53,32 +88,32 @@ jobs:
         # Address sanitizer slows autotests down too much.
         # We would hit the maximum build time on Travis.
         BUILD_OPTIONS=modules.qbsbuildconfig.enableAddressSanitizer:false
-        QMAKE_PATH=${QT_INSTALL_DIR}/5.12.4/clang_64/bin/qmake
+        QMAKE_PATH=${QT_INSTALL_DIR}/${QT_VERSION}/clang_64/bin/qmake
         PATH="${QT_INSTALL_DIR}/Qt Creator.app/Contents/MacOS:${PATH}"
         QBS_BUILD_PROFILE=qt
       before_install:
-        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version 5.12.4 qtbase qtdeclarative qttools qtscript
-        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version 4.9.2 qtcreator
+        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version ${QT_VERSION} qtbase qtdeclarative qttools qtscript
+        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version ${QTCREATOR_VERSION} qtcreator
         - pip2 install --user beautifulsoup4 lxml
       script:
         - qbs setup-toolchains --detect
         - qbs setup-qt ${QMAKE_PATH} qt
         - qbs config qt.baseProfile xcode-macosx-x86_64
         - qbs config defaultProfile qt
-        - scripts/build-qbs-with-qbs.sh
+        - qbs build ${BUILD_OPTIONS} config:release
+      before_deploy:
+        - tar zcf qbs_${TRAVIS_BUILD_NUMBER}_macos.tar.gz -C release/install-root .
+      deploy:
+        <<: *_store_on_github
+        file: qbs_${TRAVIS_BUILD_NUMBER}_macos.tar.gz
 
     - &build-on-windows
       stage: Build Qbs and and run autotests
       name: With Qbs on Windows (Visual Studio 2017)
       os: windows
       env:
-        # Need to build in release mode. Otherwise autotests would be too slow.
-        BUILD_OPTIONS="config:release"
         QT_INSTALL_DIR=C:/Qt
-        QMAKE_PATH=${QT_INSTALL_DIR}/5.12.4/msvc2017_64/bin/qmake.exe
         PATH="/c/Qt/Tools/QtCreator/bin:${PATH}"
-        WITH_DOCS=0
-        QBS_BUILD_PROFILE=qt
       before_install:
         # Disable unnecessary background services which tend to consume
         # a lot of resources
@@ -93,11 +128,16 @@ jobs:
         - powershell -Command 'Add-MpPreference -ExclusionProcess link.exe'
 
         # Install Qbs and Qt
-        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version 5.12.4 --toolchain win64_msvc2017_64 qtbase qtdeclarative qttools qtscript
-        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version 4.9.2 qtcreator
+        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version ${QT_VERSION} --toolchain win64_msvc2017_64 qtbase qtdeclarative qttools qtscript
+        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version ${QTCREATOR_VERSION} qtcreator
       script:
         - qbs setup-toolchains --detect
-        - qbs setup-qt ${QMAKE_PATH} qt
+        - qbs setup-qt ${QT_INSTALL_DIR}/${QT_VERSION}/msvc2017_64/bin/qmake.exe qt
         - qbs config qt.baseProfile MSVC2017-x86
         - qbs config defaultProfile qt
-        - scripts/build-qbs-with-qbs.sh
+        - qbs build config:release
+      before_deploy:
+        - tar zcf qbs_${TRAVIS_BUILD_NUMBER}_msvc.tar.gz -C release/install-root .
+      deploy:
+        <<: *_store_on_github
+        file: qbs_${TRAVIS_BUILD_NUMBER}_masvc.tar.gz
