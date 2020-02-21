@@ -1,0 +1,195 @@
+
+_build_job: &build_job
+  stage: Build
+  dist: bionic
+
+_test_job: &test_job
+  stage: Test
+  dist: bionic
+
+_dockerized_job: &dockerized_job
+  services:
+    - docker
+  before_script:
+    - &dockerized_job-before_script |
+      docker-compose pull ${SERVICE:-bionic}
+      ccache -M 5G
+      ccache -s
+  after_script:
+    - ccache -s
+
+jobs:
+  include:
+
+###############################################################################
+# Build stage
+###############################################################################
+
+    - <<: [ *build_job, *dockerized_job ]
+      name: linux_gcc64, Qt 5.12
+      env:
+        - CACHE_ID=1
+      script:
+        - >
+          docker-compose run bionic qbs build
+          profile:qt-gcc_64
+          config:release
+          modules.cpp.compilerWrapper:ccache
+          modules.qbs.installRoot:/qbs/qbs
+          modules.qbs.installPrefix:""
+          modules.qbsbuildconfig.enableAddressSanitizer:true
+          modules.qbsbuildconfig.enableBundledQt:true
+          modules.qbsbuildconfig.enableProjectFileUpdates:true
+          modules.qbsbuildconfig.enableUnitTests:true
+          modules.cpp.treatWarningsAsErrors:true
+          project.withDocumentation:false
+      workspaces:
+        create:
+          name: build_linux_gcc64
+          paths: ${QBS_INSTALL_DIR}
+
+    - <<: [ *build_job, *dockerized_job ]
+      name: Documentation
+      env:
+        - CACHE_ID=2
+      script:
+        - >
+          docker-compose run bionic qbs build -p \"qbs documentation\"
+          config:release
+          project.withDocumentation:true
+          modules.qbs.installRoot:/qbs/qbs
+          modules.qbs.installPrefix:""
+      workspaces:
+        create:
+          name: documentation
+          paths: ${QBS_INSTALL_DIR}
+
+    - <<: [ *build_job, *dockerized_job ]
+      stage: Build
+      name: qMake, linux_gcc64, Qt 5.12
+      env:
+        - CACHE_ID=3
+      script:
+        - >
+          docker-compose run bionic qmake -r qbs.pro
+          CONFIG+=qbs_enable_unit_tests
+          CONFIG+=qbs_enable_project_file_updates
+          CONFIG+=ccache
+        - docker-compose run bionic make -j 4
+
+    - <<: [ *build_job, *dockerized_job ]
+      if: branch = master
+      name: mingw32_w64, Qt 5.12
+      env:
+        - CACHE_ID=4
+      script:
+        - >
+          docker-compose run bionic qbs build
+          profile:qt-mingw32_w64
+          modules.cpp.compilerWrapper:ccache
+          modules.cpp.treatWarningsAsErrors:true
+          config:release
+
+###############################################################################
+# Test stage
+###############################################################################
+
+###### Analysis ######
+
+    # We do that during this stage because clang-tidy is so slow
+    - <<: [ *build_job, *dockerized_job ]
+      stage: Test
+      name: linux_clang64 & clang_tidy, Qt 5.12
+      env:
+        BUILD_OPTIONS="profile:qt-clang_64 modules.cpp.compilerWrapper:ccache"
+      script:
+        - docker-compose run bionic scripts/run-analyzer.sh
+
+###### Basic ######
+    - &test_on_linux
+      <<: [ *test_job ]
+      name: language, buildgraph, cmdlineparser, tools, blackbox-joblimits
+      env: &test_on_linux-env
+        QBS_AUTOTEST_PROFILE=x86_64-linux-gnu-gcc-7
+        LSAN_OPTIONS="suppressions=${TRAVIS_BUILD_DIR}/scripts/address-sanitizer-suppressions.txt:print_suppressions=0"
+      workspaces:
+        use:
+          - build_linux_gcc64
+      before_install:
+        - &test_on_linux-before_install |
+          sudo apt-get update && sudo apt-get -y install p7zip-full
+      before_script:
+        - &test_on_linux-before_script |
+          qbs setup-toolchains --detect
+          qbs config --list
+      script:
+        - tst_language
+        - tst_buildgraph
+        - tst_cmdlineparser
+        - tst_tools
+        - tst_blackbox-joblimits
+
+    - <<: *test_on_linux
+      name: blackbox
+      script:
+        - tst_blackbox
+
+###### Android ######
+
+    - &test_on_linux-android
+      <<: [ *test_job, *dockerized_job ]
+      name: blackbox-android (Qt 5.13)
+      env:
+        - SERVICE=bionic-android-513
+      workspaces:
+        use:
+          - build_linux_gcc64
+      before_install:
+      before_script:
+        - *dockerized_job-before_script
+      script:
+        - docker-compose build ${SERVICE}
+        - docker-compose run ${SERVICE} scripts/test-qt-for-android.sh /qbs/qbs/bin
+
+    - <<: *test_on_linux-android
+      name: blackbox-android (Qt 5.14)
+      env:
+        - SERVICE=bionic-android-514
+
+###### Qt ######
+
+    - &test_on_linux-qt
+      <<: *test_on_linux
+      name: api, blackbox-qt (5.12.7)
+      env:
+        - *test_on_linux-env
+        - QT_VERSION=5.12.7
+        - &test_on_linux-qt-env |
+          QMAKE_PATH=${QT_INSTALL_DIR}/${QT_VERSION}/gcc_64/bin/qmake
+          QBS_AUTOTEST_PROFILE=qt
+      before_install:
+        - *test_on_linux-before_install
+        - sudo apt-get -y install libgl1-mesa-dev
+        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version ${QT_VERSION} qtbase qtdeclarative qttools qtscript qtscxml qtx11extras icu
+      before_script:
+        - *test_on_linux-before_script
+        - qbs setup-qt ${QMAKE_PATH} qt
+        - qbs config qt.baseProfile x86_64-linux-gnu-gcc-7
+        - qbs config --list
+      script:
+        - tst_blackbox-qt
+        - tst_api
+
+    - <<: *test_on_linux-qt
+      name: blackbox-qt (5.14.1)
+      env:
+        - *test_on_linux-env
+        - QT_VERSION=5.14.1
+        - *test_on_linux-qt-env
+
+    - <<: *test_on_linux-qt
+      name: blackbox-qt (5.15.0)
+      env:
+        - *test_on_linux-env
+        - QT_VERSION=5.15.0
+        - *test_on_linux-qt-env

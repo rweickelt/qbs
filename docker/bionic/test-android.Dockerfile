@@ -35,6 +35,7 @@ RUN apt-get update -qq && \
     apt-get install -qq -y --no-install-recommends \
         ca-certificates \
         curl \
+        libasan4 \
         libglib2.0-0 \
         libgl1-mesa-glx \
         openjdk-8-jdk-headless \
@@ -63,15 +64,15 @@ RUN mkdir ${ANDROID_HOME}
 # Get Android SDK TOOLS
 ARG SDK_TOOLS_VERSION="4333796"
 RUN curl -s https://dl.google.com/android/repository/sdk-tools-linux-${SDK_TOOLS_VERSION}.zip > ${ANDROID_HOME}/sdk.zip && \
-    unzip ${ANDROID_HOME}/sdk.zip -d ${ANDROID_HOME} && \
+    unzip -q ${ANDROID_HOME}/sdk.zip -d ${ANDROID_HOME} && \
     rm -v ${ANDROID_HOME}/sdk.zip
 
 # Accept SDK license
 ARG ANDROID_PLATFORM="android-29"
 ARG BUILD_TOOLS="28.0.3"
-RUN yes | sdkmanager --verbose --licenses && \
-          sdkmanager --update && \
-          sdkmanager "platforms;${ANDROID_PLATFORM}" "build-tools;${BUILD_TOOLS}" "platform-tools" "tools" "ndk-bundle" && \
+RUN yes | sdkmanager --licenses >/dev/null && \
+          sdkmanager --update >/dev/null && \
+          sdkmanager "platforms;${ANDROID_PLATFORM}" "build-tools;${BUILD_TOOLS}" "platform-tools" "tools" "ndk-bundle" >/dev/null && \
     /usr/lib/jvm/java-8-openjdk-amd64/bin/keytool -genkey -keystore /home/${USER_NAME}/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'
 
 # Install ndk samples in ${ANDROID_NDK_ROOT}/samples

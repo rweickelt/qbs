@@ -1,0 +1,184 @@
+###############################################################################
+# Common nodes
+###############################################################################
+
+_build_on_macos: &build_on_macos
+  stage: Build
+  os: osx
+  osx_image: xcode11.3
+  addons:
+    homebrew:
+      packages:
+        - ccache
+        - p7zip
+      update: true
+  env:
+    - &build_on_macos-env |
+      PATH="${QT_INSTALL_DIR}/Qt Creator.app/Contents/MacOS:${PATH}"
+      QMAKE_PATH=${QT_INSTALL_DIR}/${QT_VERSION}/clang_64/bin/qmake
+  before_install:
+    - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version ${QT_VERSION} qtbase qtscript
+    - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version ${QTCREATOR_VERSION} qtcreator
+  before_script:
+    - ccache -s
+    - ccache -z
+  after_script:
+    - ccache -s
+  script:
+    - qbs setup-toolchains --detect
+    - qbs setup-qt ${QMAKE_PATH} qt
+    - qbs config profiles.qt.baseProfile xcode-macosx-x86_64
+    - qbs config defaultProfile qt
+    - qbs config --list profiles
+    - >
+      qbs build
+      profile:qt
+      config:release
+      modules.qbs.installRoot:${QBS_INSTALL_DIR}
+      modules.qbs.installPrefix:""
+      modules.qbsbuildconfig.enableAddressSanitizer:false
+      modules.qbsbuildconfig.enableBundledQt:true
+      modules.qbsbuildconfig.enableProjectFileUpdates:true
+      modules.qbsbuildconfig.enableUnitTests:true
+      modules.cpp.compilerWrapper:ccache
+      modules.cpp.treatWarningsAsErrors:true
+      project.withDocumentation:false
+
+test_on_macos: &test_on_macos
+  stage: Test
+  os: osx
+  osx_image: xcode11.3
+  before_script:
+    - &test_on_macos-before_script |
+      qbs setup-toolchains --detect
+      qbs config --list
+  workspaces:
+    use:
+      - build_macos_clang64
+
+###############################################################################
+# Begin of pipeline
+###############################################################################
+
+env:
+  global:
+    - HOMEBREW_NO_INSTALL_CLEANUP=1
+
+jobs:
+  include:
+
+###############################################################################
+# Build stage
+###############################################################################
+
+    - <<: *build_on_macos
+      name: With Qbs on macOS (xcode 11.3)
+      osx_image: xcode11.3
+      env:
+        - *build_on_macos-env
+        - CACHE_ID=1
+      workspaces:
+        create:
+          name: build_macos_clang64
+          paths: ${QBS_INSTALL_DIR}
+
+    - <<: *build_on_macos
+      name: With Qbs on macOS (xcode 10.3)
+      #if: branch = master
+      osx_image: xcode10.3
+      env:
+        - *build_on_macos-env
+        - CACHE_ID=2
+
+    - <<: *build_on_macos
+      name: With Qbs on macOS (xcode 9.4)
+      #if: branch = master
+      osx_image: xcode9.4
+      env:
+        - *build_on_macos-env
+        - CACHE_ID=3
+
+###############################################################################
+# Test stage
+###############################################################################
+
+###### Basic ######
+    - <<: *test_on_macos
+      name: api, language, buildgraph, cmdlineparser, tools, blackbox-joblimits
+      addons:
+        homebrew:
+          packages:
+            - p7zip
+          update: true
+      env:
+        - *test_on_macos-env
+        - QBS_AUTOTEST_PROFILE=xcode-macosx-x86_64
+        - QMAKE_PATH=${QT_INSTALL_DIR}/${QT_VERSION}/clang_64/bin/qmake
+      before_script:
+        - *test_on_macos-before_script
+        - ./scripts/install-qt.sh -d ~/Qt --version ${QT_VERSION} qtbase
+        - qbs setup-qt ${QT_INSTALL_DIR}/${QT_VERSION}/clang_64/bin/qmake qt
+        - qbs config qt.baseProfile xcode-macosx-x86_64
+        - qbs config --list
+      script:
+        - QBS_AUTOTEST_PROFILE=qt tst_api
+        - tst_language
+        - tst_buildgraph
+        - tst_cmdlineparser
+        - tst_tools
+        - tst_blackbox-joblimits
+
+    - <<: *test_on_macos
+      name: blackbox
+      addons:
+        homebrew:
+          packages:
+            - grpc
+            - icoutils
+            - makensis
+            - protobuf
+          update: true
+      script:
+        - tst_blackbox
+
+###### Qt ######
+
+    - &test_on_macos-qt
+      <<: *test_on_macos
+      name: blackbox-qt (5.12.7)
+      addons:
+        homebrew:
+          packages:
+            - p7zip
+            - pkg-config
+          update: true
+      env:
+        - *test_on_macos-env
+        - QT_VERSION=5.12.7
+        - &test_on_macos-qt-env |
+          QMAKE_PATH=${QT_INSTALL_DIR}/${QT_VERSION}/clang_64/bin/qmake
+        - QBS_AUTOTEST_PROFILE=qt
+      before_script:
+        - *test_on_macos-before_script
+        - ./scripts/install-qt.sh -d ${QT_INSTALL_DIR} --version ${QT_VERSION} qtbase qtdeclarative qttools qtscxml
+        - qbs setup-qt ${QMAKE_PATH} qt
+        - qbs config profiles.qt.baseProfile xcode-macosx-x86_64
+        - qbs config --list
+      script:
+        - tst_blackbox-qt
+
+    - <<: *test_on_macos-qt
+      name: blackbox-qt (5.14.1)
+      env:
+        - *test_on_macos-env
+        - QT_VERSION=5.14.1
+        - QBS_AUTOTEST_PROFILE=qt
+        - *test_on_macos-qt-env
+
+    - <<: *test_on_macos-qt
+      name: blackbox-qt (5.15.0)
+      env:
+        - *test_on_macos-env
+        - QT_VERSION=5.15.0
+        - QBS_AUTOTEST_PROFILE=qt
+        - *test_on_macos-qt-env

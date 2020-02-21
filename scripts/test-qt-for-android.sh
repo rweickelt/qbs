@@ -43,6 +43,12 @@ set -eu
 export PATH="$1:$PATH"
 
 #
+# Qbs is built with the address sanitizer enabled.
+# Suppress findings in some parts of Qbs / dependencies.
+#
+export LSAN_OPTIONS="suppressions=$( cd "$(dirname "$0")" ; pwd -P )/address-sanitizer-suppressions.txt:print_suppressions=0"
+
+#
 # These are set outside of this script, for instance in the Docker image
 #
 QT_INSTALL_DIR=/opt/Qt/${QT_VERSION}
