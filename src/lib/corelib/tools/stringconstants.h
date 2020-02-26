@@ -165,6 +165,7 @@ public:
     QBS_STRING_CONSTANT(versionAtLeastProperty, "versionAtLeast")
     QBS_STRING_CONSTANT(versionBelowProperty, "versionBelow")
 
+    QBS_STRING_CONSTANT(extensionDefaults, "_qbs_defaultExtensionInstances")
     QBS_STRING_CONSTANT(importScopeNamePropertyInternal, "_qbs_importScopeName")
     QBS_STRING_CONSTANT(modulePropertyInternal, "__module")
     QBS_STRING_CONSTANT(qbsSourceDirPropertyInternal, "_qbs_sourceDir")
@@ -177,6 +178,7 @@ public:
     QBS_STRING_CONSTANT(productsOverridePrefix, "products.")
 
     QBS_STRING_CONSTANT(baseVar, "base")
+    QBS_STRING_CONSTANT(configVar, "config")
     static const QString &explicitlyDependsOnVar() { return explicitlyDependsOn(); }
     QBS_STRING_CONSTANT(inputVar, "input")
     static const QString &inputsVar() { return inputs(); }

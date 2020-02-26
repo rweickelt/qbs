@@ -37,6 +37,8 @@
 **
 ****************************************************************************/
 
+#include "jsextensions.h"
+
 #include <language/scriptengine.h>
 #include <logging/translator.h>
 #include <tools/hostosinfo.h>
@@ -53,14 +55,12 @@
 #include <QtCore/qtextcodec.h>
 #endif
 
-#include <QtScript/qscriptable.h>
-#include <QtScript/qscriptengine.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
 
-class TextFile : public QObject, public QScriptable, public ResourceAcquiringScriptObject
+class TextFile : public JsExtension, public ResourceAcquiringScriptObject
 {
     Q_OBJECT
     Q_ENUMS(OpenMode)
@@ -73,7 +73,8 @@ public:
         Append = 4
     };
 
-    static QScriptValue ctor(QScriptContext *context, QScriptEngine *engine);
+    Q_INVOKABLE TextFile(QObject *engine, const QJSValue &filePath, OpenMode mode = ReadOnly,
+                         const QString &codec = QLatin1String("UTF-8"));
     ~TextFile() override;
 
     Q_INVOKABLE void close();
@@ -87,9 +88,6 @@ public:
     Q_INVOKABLE void writeLine(const QString &str);
 
 private:
-    TextFile(QScriptContext *context, const QString &filePath, OpenMode mode = ReadOnly,
-             const QString &codec = QLatin1String("UTF-8"));
-
     bool checkForClosed() const;
 
     // ResourceAcquiringScriptObject implementation
@@ -99,55 +97,13 @@ private:
     QTextCodec *m_codec = nullptr;
 };
 
-QScriptValue TextFile::ctor(QScriptContext *context, QScriptEngine *engine)
-{
-    TextFile *t;
-    switch (context->argumentCount()) {
-    case 0:
-        return context->throwError(Tr::tr("TextFile constructor needs path of file to be opened."));
-    case 1:
-        t = new TextFile(context, context->argument(0).toString());
-        break;
-    case 2:
-        t = new TextFile(context,
-                         context->argument(0).toString(),
-                         static_cast<OpenMode>(context->argument(1).toInt32())
-                         );
-        break;
-    case 3:
-        t = new TextFile(context,
-                         context->argument(0).toString(),
-                         static_cast<OpenMode>(context->argument(1).toInt32()),
-                         context->argument(2).toString()
-                         );
-        break;
-    default:
-        return context->throwError(Tr::tr("TextFile constructor takes at most three parameters."));
-    }
-
-    const auto se = static_cast<ScriptEngine *>(engine);
-    se->addResourceAcquiringScriptObject(t);
-    const DubiousContextList dubiousContexts({
-            DubiousContext(EvalContext::PropertyEvaluation, DubiousContext::SuggestMoving)
-    });
-    se->checkContext(QStringLiteral("qbs.TextFile"), dubiousContexts);
-    se->setUsesIo();
-
-    return engine->newQObject(t, QScriptEngine::QtOwnership);
-}
-
-TextFile::~TextFile()
-{
-    delete m_file;
-}
-
-TextFile::TextFile(QScriptContext *context, const QString &filePath, OpenMode mode,
-                   const QString &codec)
+TextFile::TextFile(QObject *engine, const QJSValue &filePath, OpenMode mode, const QString &codec)
+    : ResourceAcquiringScriptObject(qobject_cast<ScriptEngine *>(engine))
 {
     Q_UNUSED(codec)
-    Q_ASSERT(thisObject().engine() == engine());
+    auto *se = qobject_cast<ScriptEngine *>(engine);
 
-    m_file = new QFile(filePath);
+    m_file = new QFile(filePath.toString());
     const auto newCodec = QTextCodec::codecForName(qPrintable(codec));
     m_codec = newCodec ? newCodec : QTextCodec::codecForName("UTF-8");
     QIODevice::OpenMode m = QIODevice::NotOpen;
@@ -159,11 +115,25 @@ TextFile::TextFile(QScriptContext *context, const QString &filePath, OpenMode mo
         m |= QIODevice::Append;
     m |= QIODevice::Text;
     if (Q_UNLIKELY(!m_file->open(m))) {
-        context->throwError(Tr::tr("Unable to open file '%1': %2")
-                            .arg(filePath, m_file->errorString()));
+        se->throwError(Tr::tr("Unable to open file '%1': %2")
+                       .arg(filePath.toString())
+                       .arg(m_file->errorString()));
         delete m_file;
         m_file = nullptr;
+        return;
     }
+
+    se->addResourceAcquiringScriptObject(this);
+    const DubiousContextList dubiousContexts({
+            DubiousContext(EvalContext::PropertyEvaluation, DubiousContext::SuggestMoving)
+    });
+    se->checkContext(QStringLiteral("qbs.TextFile"), dubiousContexts);
+    se->setUsesIo();
+}
+
+TextFile::~TextFile()
+{
+    delete m_file;
 }
 
 void TextFile::close()
@@ -241,30 +211,39 @@ bool TextFile::checkForClosed() const
 {
     if (m_file)
         return false;
-    QScriptContext *ctx = context();
-    if (ctx)
-        ctx->throwError(Tr::tr("Access to TextFile object that was already closed."));
+    engine()->throwError(Tr::tr("Access to TextFile object that was already closed."));
     return true;
 }
 
 void TextFile::releaseResources()
 {
-    close();
-    deleteLater();
+    if (m_file)
+        close();
 }
+
+static const QString textFileConstructor = QStringLiteral(R"QBS(
+(function(m, e){
+    return function(filepath, mode = m.ReadOnly, codec = "UTF-8") {
+        return new m(e, filepath, mode, codec);
+    }
+})
+)QBS");
+
+QJSValue createTextFileExtension(QJSEngine *engine)
+{
+    QJSValue mo = engine->newQMetaObject(&TextFile::staticMetaObject);
+    QJSValue factory = engine->evaluate(textFileConstructor);
+    QJSValue wrapper = factory.call(QJSValueList{mo, engine->toScriptValue(engine)});
+    wrapper.setProperty(QStringLiteral("ReadOnly"), TextFile::ReadOnly);
+    wrapper.setProperty(QStringLiteral("WriteOnly"), TextFile::WriteOnly);
+    wrapper.setProperty(QStringLiteral("ReadWrite"), TextFile::ReadWrite);
+    wrapper.setProperty(QStringLiteral("Append"), TextFile::Append);
+    return wrapper;
+}
+
+QBS_REGISTER_JS_EXTENSION("TextFile", createTextFileExtension)
 
 } // namespace Internal
 } // namespace qbs
-
-void initializeJsExtensionTextFile(QScriptValue extensionObject)
-{
-    using namespace qbs::Internal;
-    QScriptEngine *engine = extensionObject.engine();
-    QScriptValue obj = engine->newQMetaObject(&TextFile::staticMetaObject,
-                                              engine->newFunction(&TextFile::ctor));
-    extensionObject.setProperty(QStringLiteral("TextFile"), obj);
-}
-
-Q_DECLARE_METATYPE(qbs::Internal::TextFile *)
 
 #include "textfile.moc"

@@ -7,7 +7,7 @@ include(../auto.pri)
 include(../../../src/app/shared/logging/logging.pri)
 include(../../../src/lib/bundledlibs.pri)
 
-!qbs_use_bundled_qtscript: QT += script
+!qbs_use_bundled_qtscript: QT += qml
 
 DATA_DIRS = testdata
 

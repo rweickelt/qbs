@@ -45,6 +45,7 @@ HEADERS += \
     $$PWD/processutils.h \
     $$PWD/progressobserver.h \
     $$PWD/projectgeneratormanager.h \
+    $$PWD/proxyhandler.h \
     $$PWD/qbspluginmanager.h \
     $$PWD/qbsprocess.h \
     $$PWD/shellutils.h \
@@ -98,6 +99,7 @@ SOURCES += \
     $$PWD/profiling.cpp \
     $$PWD/progressobserver.cpp \
     $$PWD/projectgeneratormanager.cpp \
+    $$PWD/proxyhandler.cpp \
     $$PWD/qbspluginmanager.cpp \
     $$PWD/qbsprocess.cpp \
     $$PWD/shellutils.cpp \

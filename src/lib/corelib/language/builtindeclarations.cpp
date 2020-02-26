@@ -356,7 +356,8 @@ ItemDeclaration BuiltinDeclarations::moduleLikeItem(ItemType type)
                                         PropertyDeclaration::Variant, QString(),
                              PropertyDeclaration::PropertyNotAvailableInConfig);
     setupRunEnvDecl.setFunctionArgumentNames(QStringList{StringConstants::projectVar(),
-                                                         StringConstants::productVar()});
+                                                         StringConstants::productVar(),
+                                                         StringConstants::configVar()});
     item << setupRunEnvDecl;
     item << PropertyDeclaration(StringConstants::validateProperty(),
                                       PropertyDeclaration::Boolean, QString(),

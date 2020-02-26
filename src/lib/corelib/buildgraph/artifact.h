@@ -175,4 +175,6 @@ inline QString toString(BuildGraphNode::BuildState s)
 } // namespace Internal
 } // namespace qbs
 
+Q_DECLARE_METATYPE(const qbs::Internal::Artifact*)
+
 #endif // QBS_ARTIFACT_H

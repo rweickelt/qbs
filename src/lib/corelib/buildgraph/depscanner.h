@@ -46,7 +46,7 @@
 
 #include <QtCore/qstringlist.h>
 
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 class ScannerPlugin;
 
@@ -119,7 +119,7 @@ private:
 
     ResolvedScannerConstPtr m_scanner;
     ScriptEngine *m_engine;
-    QScriptValue m_global;
+    QJSValue m_global;
     ResolvedProduct *m_product;
 };
 

@@ -51,7 +51,6 @@
 #include <language/artifactproperties.h>
 #include <language/language.h>
 #include <language/preparescriptobserver.h>
-#include <language/scriptengine.h>
 #include <logging/categories.h>
 #include <logging/translator.h>
 #include <tools/error.h>
@@ -467,16 +466,6 @@ void BuildDataResolver::connectRulesToDependencies(const ResolvedProductPtr &pro
 RulesEvaluationContextPtr BuildDataResolver::evalContext() const
 {
     return m_project->buildData->evaluationContext;
-}
-
-ScriptEngine *BuildDataResolver::engine() const
-{
-    return evalContext()->engine();
-}
-
-QScriptValue BuildDataResolver::scope() const
-{
-    return evalContext()->scope();
 }
 
 } // namespace Internal

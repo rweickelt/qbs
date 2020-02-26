@@ -110,18 +110,18 @@ Product {
             throw "the binary plist did not get parsed properly";
         }
 
-        if (propertyList.toString("json") !== propertyList.toString("json-compact") ||
+        if (propertyList.toFormattedString("json") !== propertyList.toFormattedString("json-compact") ||
             propertyList.toJSON() !== propertyList.toJSON("compact")) {
             throw "json and json-compact formats were not equivalent";
         }
 
-        if (propertyList.toString("json") === propertyList.toString("json-pretty") ||
+        if (propertyList.toFormattedString("json") === propertyList.toFormattedString("json-pretty") ||
             propertyList.toJSON() === propertyList.toJSON("pretty")) {
             throw "json and json-pretty formats were not different";
         }
 
-        if (propertyList.toString("xml1") !== propertyList.toXMLString()) {
-            throw 'toString("xml1") and toXMLString() were not equivalent';
+        if (propertyList.toFormattedString("xml1") !== propertyList.toXMLString()) {
+            throw 'toFormattedString("xml1") and toXMLString() were not equivalent';
         }
 
         return true;

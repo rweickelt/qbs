@@ -55,14 +55,14 @@ namespace Internal {
 
 RulesEvaluationContext::RulesEvaluationContext(Logger logger)
     : m_logger(std::move(logger)),
-      m_engine(ScriptEngine::create(m_logger, EvalContext::RuleExecution)),
+      m_engine(ScriptEngine::create(const_cast<Logger&>(m_logger), EvalContext::RuleExecution)),
       m_observer(nullptr),
       m_initScopeCalls(0)
 {
     m_prepareScriptScope = m_engine->newObject();
     m_prepareScriptScope.setPrototype(m_engine->globalObject());
-    ProcessCommand::setupForJavaScript(m_prepareScriptScope);
-    JavaScriptCommand::setupForJavaScript(m_prepareScriptScope);
+    ProcessCommand::setupForJavaScript(m_engine);
+    JavaScriptCommand::setupForJavaScript(m_engine);
 }
 
 RulesEvaluationContext::~RulesEvaluationContext()
@@ -105,7 +105,7 @@ void RulesEvaluationContext::cleanupScope()
     if (--m_initScopeCalls > 0)
         return;
 
-    m_scope = QScriptValue();
+    m_scope = QJSValue();
     m_engine->setGlobalObject(m_prepareScriptScope.prototype());
     m_engine->setActive(false);
 }

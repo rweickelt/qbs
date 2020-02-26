@@ -340,7 +340,8 @@ Module {
             args.unshift(flags);
 
             var otherFlags = ModUtils.moduleProperty(product, "additionalJarFlags");
-            if (otherFlags)
+            // Avoid concatenating [] because of QTBUG-90456
+            if (otherFlags && otherFlags.length > 0)
                 args = args.concat(otherFlags);
 
             for (i in inputs["java.class"])

@@ -43,37 +43,35 @@
 #include <QtCore/qglobal.h>
 
 QT_BEGIN_NAMESPACE
-class QScriptValue;
 class QString;
 QT_END_NAMESPACE
 
 namespace qbs {
 namespace Internal {
-class ScriptEngine;
 
-enum class UnobserveMode { Enabled, Disabled };
+//enum class UnobserveMode { Enabled, Disabled };
 
-class ScriptPropertyObserver
-{
-public:
-    ScriptPropertyObserver(ScriptEngine *engine, UnobserveMode unobserveMode)
-        : m_engine(engine), m_unobserveMode(unobserveMode)
-    {}
+//class ScriptPropertyObserver
+//{
+//public:
+//    ScriptPropertyObserver(ScriptEngine *engine, UnobserveMode unobserveMode)
+//        : m_engine(engine), m_unobserveMode(unobserveMode)
+//    {}
 
-    UnobserveMode unobserveMode() const { return m_unobserveMode; }
+//    UnobserveMode unobserveMode() const { return m_unobserveMode; }
 
-    virtual ~ScriptPropertyObserver();
+//    virtual ~ScriptPropertyObserver();
 
-    virtual void onPropertyRead(const QScriptValue &object, const QString &name,
-                                const QScriptValue &value) = 0;
+//    virtual void onPropertyRead(const QScriptValue &object, const QString &name,
+//                                const QScriptValue &value) = 0;
 
-protected:
-    ScriptEngine * engine() const { return m_engine; }
+//protected:
+//    ScriptEngine * engine() const { return m_engine; }
 
-private:
-    ScriptEngine * const m_engine;
-    const UnobserveMode m_unobserveMode;
-};
+//private:
+//    ScriptEngine * const m_engine;
+//    const UnobserveMode m_unobserveMode;
+//};
 
 } // namespace Internal
 } // namespace qbs

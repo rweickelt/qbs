@@ -42,7 +42,7 @@
 
 #include <QtCore/qhash.h>
 
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
@@ -52,13 +52,13 @@ class ScriptEngine;
 class ScriptImporter
 {
 public:
-    ScriptImporter(ScriptEngine *scriptEngine);
-    QScriptValue importSourceCode(const QString &sourceCode, const QString &filePath, QScriptValue &targetObject);
+    ScriptImporter(ScriptEngine *jsEngine);
+    QJSValue importSourceCode(const QString &sourceCode, const QString &filePath, QJSValue &targetObject);
 
-    static void copyProperties(const QScriptValue &src, QScriptValue &dst);
+    static void copyProperties(const QJSValue &src, QJSValue &dst);
 
 private:
-    ScriptEngine *m_engine;
+    ScriptEngine *m_jsEngine;
     QHash<QString, QString> m_sourceCodeCache;
 };
 

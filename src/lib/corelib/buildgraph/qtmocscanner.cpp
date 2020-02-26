@@ -40,6 +40,7 @@
 #include "qtmocscanner.h"
 
 #include "artifact.h"
+#include "artifactsscriptvalue.h"
 #include "depscanner.h"
 #include "productbuilddata.h"
 #include "projectbuilddata.h"
@@ -53,9 +54,6 @@
 #include <tools/scripttools.h>
 
 #include <QtCore/qdebug.h>
-
-#include <QtScript/qscriptcontext.h>
-#include <QtScript/qscriptengine.h>
 
 namespace qbs {
 namespace Internal {
@@ -100,23 +98,13 @@ private:
     const QString m_id;
 };
 
-static QString qtMocScannerJsName() { return QStringLiteral("QtMocScanner"); }
-
-QtMocScanner::QtMocScanner(const ResolvedProductPtr &product, QScriptValue targetScriptValue)
+QtMocScanner::QtMocScanner()
     : m_tags(*commonFileTags())
-    , m_product(product)
-    , m_targetScriptValue(targetScriptValue)
 {
-    const auto engine = static_cast<ScriptEngine *>(targetScriptValue.engine());
-    QScriptValue scannerObj = engine->newObject();
-    targetScriptValue.setProperty(qtMocScannerJsName(), scannerObj);
-    QScriptValue applyFunction = engine->newFunction(&js_apply, this);
-    scannerObj.setProperty(QStringLiteral("apply"), applyFunction);
 }
 
 QtMocScanner::~QtMocScanner()
 {
-    m_targetScriptValue.setProperty(qtMocScannerJsName(), QScriptValue());
 }
 
 static RawScanResult runScanner(ScannerPlugin *scanner, const Artifact *artifact)
@@ -199,24 +187,25 @@ void QtMocScanner::findIncludedMocCppFiles()
     }
 }
 
-QScriptValue QtMocScanner::js_apply(QScriptContext *ctx, QScriptEngine *engine,
-                                    QtMocScanner *that)
-{
-    QScriptValue input = ctx->argument(0);
-    return that->apply(engine, attachedPointer<Artifact>(input));
-}
-
-static QScriptValue scannerCountError(QScriptEngine *engine, size_t scannerCount,
+static QJSValue scannerCountError(ScriptEngine *engine, size_t scannerCount,
         const QString &fileTag)
 {
-    return engine->currentContext()->throwError(
+    engine->throwError(
                 Tr::tr("There are %1 scanners for the file tag %2. "
                        "Expected is exactly one.").arg(scannerCount).arg(fileTag));
+    return QJSValue();
 }
 
-QScriptValue QtMocScanner::apply(QScriptEngine *engine, const Artifact *artifact)
+QJSValue QtMocScanner::apply(const QJSValue &artifactValue)
 {
-    if (!m_cppScanner) {
+    ScriptEngine *engine = this->engine();
+    const Artifact *artifact = artifactForScriptValue(engine, artifactValue);
+    QBS_CHECK(artifact);
+    m_product = artifact->product.get();
+    bool wasUsedInDifferentProduct = m_product && (artifact->product.get() != m_product);
+    // TODO: Do we need to recreate m_cppScanner for different products?
+    QBS_CHECK(!wasUsedInDifferentProduct);
+    if (!m_cppScanner || wasUsedInDifferentProduct) {
         auto scanners = ScannerPluginManager::scannersForFileTag(m_tags.cpp);
         if (scanners.size() != 1)
             return scannerCountError(engine, scanners.size(), m_tags.cpp.toString());
@@ -266,13 +255,20 @@ QScriptValue QtMocScanner::apply(QScriptEngine *engine, const Artifact *artifact
                           << "mustCompile:" << mustCompile
                           << "hasPluginMetaDataMacro:" << hasPluginMetaDataMacro;
 
-    QScriptValue obj = engine->newObject();
+    QJSValue obj = engine->newObject();
     obj.setProperty(QStringLiteral("hasQObjectMacro"), hasQObjectMacro);
     obj.setProperty(QStringLiteral("mustCompile"), mustCompile);
     obj.setProperty(QStringLiteral("hasPluginMetaDataMacro"), hasPluginMetaDataMacro);
-    static_cast<ScriptEngine *>(engine)->setUsesIo();
+    engine->setUsesIo();
     return obj;
 }
+
+QJSValue createQtMocScannerExtension(QJSEngine *engine)
+{
+    return engine->newQObject(new QtMocScanner());
+}
+
+QBS_REGISTER_JS_EXTENSION("QtMocScanner", createQtMocScannerExtension)
 
 } // namespace Internal
 } // namespace qbs

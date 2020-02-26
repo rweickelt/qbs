@@ -38,68 +38,78 @@
 ****************************************************************************/
 
 #include "jsextensions.h"
+#include "language/scriptengine.h"
+#include "tools/stringconstants.h"
 
 #include <QtCore/qmap.h>
-#include <QtScript/qscriptengine.h>
+#include <QtCore/qglobalstatic.h>
+#include <QtQml/qqmlengine.h>
 
 #include <utility>
-
-using InitializerMap = QMap<QString, void (*)(QScriptValue)>;
-static InitializerMap setupMap()
-{
-#define INITIALIZER_NAME(name) initializeJsExtension##name
-#define ADD_JS_EXTENSION(name) \
-    void INITIALIZER_NAME(name)(QScriptValue); \
-    map.insert(QStringLiteral(#name), &INITIALIZER_NAME(name))
-
-    InitializerMap map;
-    ADD_JS_EXTENSION(BinaryFile);
-    ADD_JS_EXTENSION(Environment);
-    ADD_JS_EXTENSION(File);
-    ADD_JS_EXTENSION(FileInfo);
-    ADD_JS_EXTENSION(Process);
-    ADD_JS_EXTENSION(PropertyList);
-    ADD_JS_EXTENSION(TemporaryDir);
-    ADD_JS_EXTENSION(TextFile);
-    ADD_JS_EXTENSION(Utilities);
-    ADD_JS_EXTENSION(Xml);
-    return map;
-}
 
 namespace qbs {
 namespace Internal {
 
-static InitializerMap &initializers()
+using InstallerTable = QMap<QString, JsExtension::InstallerFunctionPtr>;
+Q_GLOBAL_STATIC(InstallerTable, jsExtensions)
+
+void JsExtensions::setupExtensions(const QStringList &names, ScriptEngine *engine)
 {
-    static InitializerMap theMap = setupMap();
-    return theMap;
+    for (const auto &name: names) {
+        const auto &installer = jsExtensions->value(name, nullptr);
+        QBS_ASSERT(installer, qWarning() << "Extension " << name << " requested"; continue);
+        installer(engine);
+    }
 }
 
-void JsExtensions::setupExtensions(const QStringList &names, const QScriptValue &scope)
+QJSValue JsExtensions::loadExtension(QJSEngine *engine, const QString &name)
 {
-    for (const QString &name : names)
-        initializers().value(name)(scope);
-}
+    const auto &installer = jsExtensions->value(name, nullptr);
+    QJSValue globalObject = engine->globalObject();
+    QJSValue extensionNS = globalObject.property(StringConstants::extensionDefaults());
+    if (extensionNS.isUndefined()) {
+        extensionNS = engine->newObject();
+        globalObject.setProperty(StringConstants::extensionDefaults(), extensionNS);
+    }
+    QJSValue extension = extensionNS.property(name);
+    if (!extension.isUndefined())
+        return extension;
 
-QScriptValue JsExtensions::loadExtension(QScriptEngine *engine, const QString &name)
-{
-    if (!hasExtension(name))
-        return {};
+    if (installer) {
+        extension = installer(engine);
+        extensionNS.setProperty(name, extension);
+    }
 
-    QScriptValue extensionObj = engine->newObject();
-    initializers().value(name)(extensionObj);
-    return extensionObj.property(name);
+    return extension;
 }
 
 bool JsExtensions::hasExtension(const QString &name)
 {
-    return initializers().contains(name);
+    return jsExtensions->contains(name);
 }
 
 QStringList JsExtensions::extensionNames()
 {
-    return initializers().keys();
+    return jsExtensions->keys();
 }
+
+ScriptEngine *JsExtension::engine()
+{
+    return (qobject_cast<ScriptEngine *>(qjsEngine(this)));
+}
+
+ScriptEngine *JsExtension::engine() const
+{
+    return (qobject_cast<ScriptEngine *>(qjsEngine(this)));
+}
+
+JsExtensionInstaller::JsExtensionInstaller(const QString &name,
+                                           const JsExtension::InstallerFunctionPtr installer)
+{
+    jsExtensions->insert(name, installer);
+}
+
+
 
 } // namespace Internal
 } // namespace qbs

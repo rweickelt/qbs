@@ -42,9 +42,9 @@
 
 #include <buildgraph/forward_decls.h>
 #include <language/forward_decls.h>
+#include <tools/proxyhandler.h>
 
-#include <QtScript/qscriptcontext.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/QJSValue>
 
 namespace qbs {
 namespace Internal {
@@ -59,25 +59,11 @@ enum ModulePropertiesScriptValueCommonPropertyKeys : quint32
     DependencyParametersKey,
 };
 
-QScriptValue getDataForModuleScriptValue(QScriptEngine *engine, const ResolvedProduct *product,
-                                         const Artifact *artifact, const ResolvedModule *module);
-
 class ModuleProperties
 {
 public:
-    static void init(QScriptValue productObject, const ResolvedProduct *product);
-    static void init(QScriptValue artifactObject, const Artifact *artifact);
-    static void setModuleScriptValue(QScriptValue targetObject, const QScriptValue &moduleObject,
-                                     const QString &moduleName);
-
-private:
-    static void init(QScriptValue objectWithProperties, const void *ptr, const QString &type);
-    static void setupModules(QScriptValue &object, const ResolvedProduct *product,
-                             const Artifact *artifact);
-
-    static QScriptValue js_moduleProperty(QScriptContext *context, QScriptEngine *engine);
-
-    static QScriptValue moduleProperty(QScriptContext *context, QScriptEngine *engine);
+    static void setModuleScriptValue(QJSValue &targetObject, const QJSValue &moduleObject,
+                                     const QString &moduleName, ScriptEngine *engine);
 };
 
 } // namespace Internal

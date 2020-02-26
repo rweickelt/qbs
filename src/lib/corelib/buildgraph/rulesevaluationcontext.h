@@ -45,8 +45,7 @@
 #include <QtCore/qhash.h>
 #include <QtCore/qstring.h>
 
-#include <QtScript/qscriptprogram.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
@@ -70,7 +69,7 @@ public:
     };
 
     ScriptEngine *engine() const { return m_engine; }
-    QScriptValue scope() const { return m_scope; }
+    QJSValue &scope() { return m_scope; }
 
     void setObserver(ProgressObserver *observer) { m_observer = observer; }
     ProgressObserver *observer() const { return m_observer; }
@@ -88,8 +87,8 @@ private:
     ScriptEngine * const m_engine;
     ProgressObserver *m_observer;
     unsigned int m_initScopeCalls;
-    QScriptValue m_scope;
-    QScriptValue m_prepareScriptScope;
+    QJSValue m_scope;
+    QJSValue m_prepareScriptScope;
 };
 
 } // namespace Internal

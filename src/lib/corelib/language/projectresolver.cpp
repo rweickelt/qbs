@@ -46,8 +46,8 @@
 #include "item.h"
 #include "language.h"
 #include "propertymapinternal.h"
-#include "resolvedfilecontext.h"
 #include "scriptengine.h"
+#include "resolvedfilecontext.h"
 #include "value.h"
 
 #include <jsextensions/jsextensions.h>
@@ -112,9 +112,6 @@ struct ProjectResolver::ModuleContext
     JobLimits jobLimits;
 };
 
-class CancelException { };
-
-
 ProjectResolver::ProjectResolver(Evaluator *evaluator, ModuleLoaderResult loadResult,
         SetupProjectParameters setupParameters, Logger &logger)
     : m_evaluator(evaluator)
@@ -166,7 +163,7 @@ TopLevelProjectPtr ProjectResolver::resolve()
     try {
         tlp = resolveTopLevelProject();
         printProfilingInfo();
-    } catch (const CancelException &) {
+    } catch (const ScriptEngine::CancelException &) {
         throw ErrorInfo(Tr::tr("Project resolving canceled for configuration '%1'.")
                     .arg(TopLevelProject::deriveId(m_setupParams.finalBuildConfigurationTree())));
     }
@@ -176,7 +173,7 @@ TopLevelProjectPtr ProjectResolver::resolve()
 void ProjectResolver::checkCancelation() const
 {
     if (m_progressObserver && m_progressObserver->canceled())
-        throw CancelException();
+        throw ScriptEngine::CancelException();
 }
 
 QString ProjectResolver::verbatimValue(const ValueConstPtr &value, bool *propertyWasSet) const
@@ -475,12 +472,15 @@ void ProjectResolver::resolveProductFully(Item *item, ProjectContext *projectCon
     createProductConfig(product.get());
     product->productProperties.insert(StringConstants::destinationDirProperty(),
                                       product->destinationDirectory);
-    ModuleProperties::init(m_evaluator->scriptValue(item), product.get());
+    // TODO: Do we need this here? xxx.dependencies and xxx.parameters is only
+    //       used in prepare scripts and transformers which are handled by the buildgraph.
+    // ModuleProperties::init(m_evaluator->scriptValue(item), product.get());
 
     QList<Item *> subItems = item->children();
     const ValuePtr filesProperty = item->property(StringConstants::filesProperty());
     if (filesProperty) {
         Item *fakeGroup = Item::create(item->pool(), ItemType::Group);
+        fakeGroup->setParent(item);
         fakeGroup->setFile(item->file());
         fakeGroup->setLocation(item->location());
         fakeGroup->setScope(item);
@@ -1747,17 +1747,23 @@ void ProjectResolver::evaluateProperty(const Item *item, const QString &propName
         if (pd.flags().testFlag(PropertyDeclaration::PropertyNotAvailableInConfig)) {
             break;
         }
-        const QScriptValue scriptValue = m_evaluator->property(item, propName);
-        if (checkErrors && Q_UNLIKELY(m_evaluator->engine()->hasErrorOrException(scriptValue))) {
-            throw ErrorInfo(m_evaluator->engine()->lastError(scriptValue,
-                                                             propValue->location()));
+        QJSValue scriptValue;
+        try {
+            scriptValue = m_evaluator->value(item, propName);
+        } catch (const ErrorInfo &error) {
+            if (checkErrors)
+                throw error;
         }
-
         // NOTE: Loses type information if scriptValue.isUndefined == true,
-        //       as such QScriptValues become invalid QVariants.
+        //       as such QJSValues become invalid QVariants.
         QVariant v;
-        if (scriptValue.isFunction()) {
-            v = scriptValue.toString();
+        if (scriptValue.isCallable()) {
+            JSSourceValueConstPtr sourceValue = std::static_pointer_cast<const JSSourceValue>(propValue);
+            const auto location = sourceValue->location();
+            v = m_engine->extractFunctionSourceCode(scriptValue,
+                                                    sourceValue->sourceCodeForEvaluation(),
+                                                    sourceValue->location(),
+                                                    38);
         } else {
             v = scriptValue.toVariant();
             QVariantMap m = v.toMap();

@@ -402,7 +402,7 @@ function createDebugKeyStoreCommandString(keytoolFilePath, keystoreFilePath) {
                 "-storepass", "android", "-keypass", "android", "-keyalg", "RSA",
                 "-keysize", "2048", "-validity", "10000", "-dname",
                 "CN=Android Debug,O=Android,C=US"];
-    return Process.shellQuote(keytoolFilePath, args);
+    return Utilities.shellQuote(keytoolFilePath, args);
 }
 
 function stlDeploymentData(product, inputs, type)

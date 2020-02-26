@@ -40,83 +40,129 @@
 #ifndef QBS_EVALUATOR_H
 #define QBS_EVALUATOR_H
 
+#include "evaluationdata.h"
 #include "forward_decls.h"
 #include "itemobserver.h"
 #include "qualifiedid.h"
 
-#include <QtCore/qhash.h>
+#include <jsextensions/importhelper.h>
 
-#include <QtScript/qscriptvalue.h>
+#include <QtCore/qhash.h>
+#include <QtQml/qjsvalue.h>
+#include <QtQml/qqmlerror.h>
 
 #include <functional>
+#include <stack>
 
 namespace qbs {
 namespace Internal {
-class EvaluatorScriptClass;
 class FileTags;
+class UnqualifiedLookupProxyHandler;
 class Logger;
+class ProbeScriptProxyHandler;
 class PropertyDeclaration;
 class ScriptEngine;
 
 class QBS_AUTOTEST_EXPORT Evaluator : private ItemObserver
 {
-    friend class SVConverter;
+    friend class ErrorGuard;
+    friend class ItemProxyHandler;
+    friend class ParentProxyHandler;
+    friend class UnqualifiedLookupProxyHandler;
+    friend class ProbeScriptProxyHandler;
 
 public:
     Evaluator(ScriptEngine *scriptEngine);
-    ~Evaluator() override;
 
+    void clearCache(const Item *item, const QString &name = QString());
     ScriptEngine *engine() const { return m_scriptEngine; }
-    QScriptValue property(const Item *item, const QString &name);
+    EvaluationData &evaluationData(const Item *item);
 
-    QScriptValue value(const Item *item, const QString &name, bool *propertySet = nullptr);
+    QJSValue property(const Item *item, const QString &name) { return value(item, name); }
+    QJSValue value(const Item *item, const QString &name, bool *propertySet = nullptr);
     bool boolValue(const Item *item, const QString &name, bool *propertyWasSet = nullptr);
     int intValue(const Item *item, const QString &name, int defaultValue = 0,
                  bool *propertyWasSet = nullptr);
     FileTags fileTagsValue(const Item *item, const QString &name, bool *propertySet = nullptr);
+    QJSValue scriptValue(const Item *item);
     QString stringValue(const Item *item, const QString &name,
                         const QString &defaultValue = QString(), bool *propertyWasSet = nullptr);
     QStringList stringListValue(const Item *item, const QString &name,
                                 bool *propertyWasSet = nullptr);
 
-    void convertToPropertyType(const PropertyDeclaration& decl, const CodeLocation &loc,
-                               QScriptValue &v);
-
-    QScriptValue scriptValue(const Item *item);
-
-    struct FileContextScopes
-    {
-        QScriptValue fileScope;
-        QScriptValue importScope;
-    };
-
-    FileContextScopes fileContextScopes(const FileContextConstPtr &file);
+    QVariantMap itemToVariantMap(const Item *item);
+    Item *itemFromValue(const QJSValue& value);
 
     void setCachingEnabled(bool enabled);
+    void setProperty(Item *item, const QString &name, const QJSValue &value);
 
     PropertyDependencies propertyDependencies() const;
     void clearPropertyDependencies();
 
     void handleEvaluationError(const Item *item, const QString &name,
-            const QScriptValue &scriptValue);
+            const QJSValue &scriptValue);
 
     void setPathPropertiesBaseDir(const QString &dirPath);
     void clearPathPropertiesBaseDir();
 
     bool isNonDefaultValue(const Item *item, const QString &name) const;
+
+    void evaluateConfigureScript(const Item *probeItem, JSSourceValueConstPtr source,
+                                 QMap<QString, QJSValue> *properties);
+
 private:
+    QJSValue createItemProxy(const Item *item);
+
+    QString mergeJSCollection(const QStringList &filePaths);
+
     void onItemPropertyChanged(Item *item) override;
-    bool evaluateProperty(QScriptValue *result, const Item *item, const QString &name,
-            bool *propertyWasSet);
+
+    bool evaluateProperty(QJSValue *result,
+                          const Item *item,
+                          const QString &name,
+                          bool *propertyWasSet);
+
+    QJSValue evaluateProperty(const Item *item,
+                              const QString &name);
+
+    QJSValue evaluateValue(ValueConstPtr value,
+                           const Item *item,
+                           const QString &name,
+                           const PropertyDeclaration &decl,
+                           const Item *propertyLookupItem);
+
+    QJSValue evaluateJSSourceValue(JSSourceValueConstPtr sourceValue,
+                             const Item *item,
+                             const QString &name,
+                             const PropertyDeclaration &decl,
+                             const Item *propertyLookupItem,
+                             const QJSValue *outerValue = nullptr);
+
+    QJSValue evaluateCode(const QString &code, const CodeLocation &location);
+
+
+    void convertToPropertyType(QJSValue &value,
+                               const Item *item,
+                               const PropertyDeclaration &decl,
+                               const CodeLocation &loc = CodeLocation());
+
+
+    QJSValue sanitizeUndefinedValue(const PropertyDeclaration &decl, const QJSValue &value);
+
+    void throwError(const QString & description, CodeLocation location = CodeLocation());
 
     ScriptEngine *m_scriptEngine;
-    EvaluatorScriptClass *m_scriptClass;
-    mutable QHash<const Item *, QScriptValue> m_scriptValueMap;
-    mutable QHash<FileContextConstPtr, FileContextScopes> m_fileContextScopesMap;
+    mutable QHash<const Item *, EvaluationData> m_evaluationDataMap;
+    mutable QHash<quintptr, Item *> m_itemMap;
+    QString m_pathPropertiesBaseDir;
+    int m_nestLevel = 0;
+    ErrorInfo m_errors;
+    bool m_cacheEnabled = false;
+    PropertyDependencies m_propertyDependencies;
+    std::stack<QualifiedId> m_requestedProperties;
+    UnqualifiedLookupProxyHandler *m_unqualifiedLookupProxy;
+    ProbeScriptProxyHandler *m_probeScriptProxy;
 };
-
-void throwOnEvaluationError(ScriptEngine *engine, const QScriptValue &scriptValue,
-                            const std::function<CodeLocation()> &provideFallbackCodeLocation);
 
 class EvalCacheEnabler
 {

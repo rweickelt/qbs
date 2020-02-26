@@ -63,15 +63,11 @@
 #include <QtCore/qstringlist.h>
 #include <QtCore/qvariant.h>
 
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 #include <memory>
 #include <mutex>
 #include <vector>
-
-QT_BEGIN_NAMESPACE
-class QScriptEngine;
-QT_END_NAMESPACE
 
 namespace qbs {
 namespace Internal {
@@ -334,7 +330,7 @@ class PrivateScriptFunction
     friend bool operator==(const PrivateScriptFunction &a, const PrivateScriptFunction &b);
 public:
     void initialize(const ScriptFunctionPtr &sharedData) { m_sharedData = sharedData; }
-    mutable QScriptValue scriptFunction; // not stored
+    mutable QJSValue scriptFunction; // not stored
 
     QString &sourceCode() const { return m_sharedData->sourceCode; }
     CodeLocation &location()  const { return m_sharedData->location; }
@@ -545,7 +541,6 @@ bool operator==(const ExportedModule &m1, const ExportedModule &m2);
 inline bool operator!=(const ExportedModule &m1, const ExportedModule &m2) { return !(m1 == m2); }
 
 class TopLevelProject;
-class ScriptEngine;
 
 class QBS_AUTOTEST_EXPORT ResolvedProduct
 {
@@ -601,6 +596,8 @@ public:
     static QString fullDisplayName(const QString &name, const QString &multiplexConfigurationId);
     QString fullDisplayName() const;
     QString profile() const;
+
+    ResolvedModuleConstPtr module(const QString name);
 
     QStringList generatedFiles(const QString &baseFile, bool recursive, const FileTags &tags) const;
 
@@ -743,9 +740,8 @@ QString multiplexIdToString(const QString &id);
 } // namespace Internal
 } // namespace qbs
 
-QT_BEGIN_NAMESPACE
-Q_DECLARE_TYPEINFO(qbs::Internal::JsImport, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(qbs::Internal::RuleArtifact::Binding, Q_MOVABLE_TYPE);
-QT_END_NAMESPACE
+Q_DECLARE_METATYPE(const qbs::Internal::ResolvedModule *)
+Q_DECLARE_METATYPE(const qbs::Internal::ResolvedProduct *)
+Q_DECLARE_METATYPE(const qbs::Internal::ResolvedProject *)
 
 #endif // QBS_LANGUAGE_H

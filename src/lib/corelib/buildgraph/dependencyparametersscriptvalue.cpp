@@ -41,44 +41,71 @@
 #include <language/preparescriptobserver.h>
 #include <language/qualifiedid.h>
 #include <language/scriptengine.h>
+#include <tools/proxyhandler.h>
 #include <tools/stringconstants.h>
 
 namespace qbs {
 namespace Internal {
 
-static QScriptValue toScriptValue(ScriptEngine *engine, const QString &productName,
-                                  const QVariantMap &v, const QString &depName,
-                                  const QualifiedId &moduleName)
+namespace {
+    const QString internalDataProperty = QStringLiteral("_qbs_data");
+}
+
+class DependencyParameterProxyHandler: public DefaultProxyHandler
 {
-    QScriptValue obj = engine->newObject();
-    bool objIdAddedToObserver = false;
+public:
+    QJSValue get(QJSValue target, const QJSValue &key, const QJSValue &receiver) override
+    {
+        QJSValue value = this->DefaultProxyHandler::get(target, key, receiver);
+        if (target.hasProperty(key.toString())) {
+            QString name = key.toString();
+            QStringList data = target.property(internalDataProperty).toVariant().toStringList();
+            QBS_CHECK(!data.isEmpty());
+            Property p(data[0], data[1], name, value.toVariant(), Property::PropertyInParameters);
+            engine()->addPropertyRequestedInScript(p);
+        }
+        return value;
+    }
+};
+
+// TODO: This would be a good place to investigate the possibility of
+//       using the previous observer approach and whether it could be implemented more
+//       efficiently than the proxy approach. At least the code would then be more similar.
+static QJSValue toScriptValue(ScriptEngine *engine, const QString &productName,
+                              const QVariantMap &v, const QString &depName,
+                              const QualifiedId &moduleName, QJSValue handler)
+{
+    QJSValue obj = engine->newObject();
+    bool isModuleObject = false;
     for (auto it = v.begin(); it != v.end(); ++it) {
         if (it.value().userType() == QMetaType::QVariantMap) {
-            obj.setProperty(it.key(), toScriptValue(engine, productName, it.value().toMap(),
-                    depName, QualifiedId(moduleName) << it.key()));
+            QualifiedId id = moduleName;
+            id << it.key();
+            QJSValue scriptValue = toScriptValue(engine, productName, it.value().toMap(), depName,
+                                                 id, handler);
+            obj.setProperty(it.key(), scriptValue);
         } else {
-            if (!objIdAddedToObserver) {
-                objIdAddedToObserver = true;
-                engine->observer()->addParameterObjectId(obj.objectId(), productName, depName,
-                                                         moduleName);
+            if (!isModuleObject) {
+                isModuleObject = true;
+                QJSValue data = engine->newArray(2);
+                data.setProperty(0, productName);
+                data.setProperty(1, depName + QLatin1Char(':') + moduleName.toString());
+                obj.setProperty(internalDataProperty, data); // TODO make non-enumerable
             }
-            engine->setObservedProperty(obj, it.key(), engine->toScriptValue(it.value()));
+            obj.setProperty(it.key(), engine->toScriptValue(it.value()));
         }
     }
-    return obj;
+    if (isModuleObject)
+        return engine->newProxyObject(obj, handler);
+    else
+        return obj;
 }
 
-
-static QScriptValue toScriptValue(ScriptEngine *scriptEngine, const QString &productName,
-                                  const QVariantMap &v, const QString &depName)
+QJSValue dependencyParametersValue(const QString &productName, const QString &dependencyName,
+                                   const QVariantMap &parametersMap, ScriptEngine *engine)
 {
-    return toScriptValue(scriptEngine, productName, v, depName, {});
-}
-
-QScriptValue dependencyParametersValue(const QString &productName, const QString &dependencyName,
-                                       const QVariantMap &parametersMap, ScriptEngine *engine)
-{
-    return toScriptValue(engine, productName, parametersMap, dependencyName);
+    QJSValue handler = engine->newQObject(new DependencyParameterProxyHandler());
+    return toScriptValue(engine, productName, parametersMap, dependencyName, {}, handler);
 }
 
 } // namespace Internal

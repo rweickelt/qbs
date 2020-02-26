@@ -40,22 +40,24 @@
 #define QBS_ARTIFACTSSCRIPTVALUE_H
 
 #include <language/forward_decls.h>
+#include <tools/qbsassert.h>
 
-#include <QtScript/qscriptvalue.h>
-
-QT_BEGIN_NAMESPACE
-class QScriptContext;
-QT_END_NAMESPACE
+#include <QtCore/qobject.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
+class Artifact;
 class ScriptEngine;
 
-QScriptValue artifactsScriptValueForProduct(QScriptContext *ctx, ScriptEngine *engine,
-                                            const ResolvedProduct *product);
+QJSValue scriptValueForArtifact(ScriptEngine *engine, const Artifact *artifact,
+                                const QString &defaultModuleName = QString());
 
-QScriptValue artifactsScriptValueForModule(QScriptContext *ctx, ScriptEngine *engine,
-                                           const ResolvedModule *module);
+const Artifact *artifactForScriptValue(ScriptEngine *engine, const QJSValue &value);
+
+QJSValue artifactsScriptValueForProduct(ScriptEngine *engine, const ResolvedProduct *product);
+
+QJSValue artifactsScriptValueForModule(ScriptEngine *engine, const ResolvedModule *module);
 
 } // namespace Internal
 } // namespace qbs

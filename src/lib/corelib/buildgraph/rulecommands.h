@@ -51,14 +51,27 @@
 #include <QtCore/qstringlist.h>
 #include <QtCore/qvariant.h>
 
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
 
-class AbstractCommand
+class PrivateScriptFunction;
+class ScriptEngine;
+
+class AbstractCommand: public QObject
 {
+    Q_OBJECT
+    Q_PROPERTY(QString description MEMBER m_description)
+    Q_PROPERTY(QString extendedDescription MEMBER m_extendedDescription)
+    Q_PROPERTY(QString highlight MEMBER m_highlight)
+    Q_PROPERTY(bool ignoreDryRun MEMBER m_ignoreDryRun)
+    Q_PROPERTY(QString jobPool MEMBER m_jobPool)
+    Q_PROPERTY(bool silent MEMBER m_silent)
+    Q_PROPERTY(int timeout MEMBER m_timeout)
+
 public:
+    AbstractCommand();
     virtual ~AbstractCommand();
 
     enum CommandType {
@@ -75,7 +88,7 @@ public:
 
     virtual CommandType type() const = 0;
     virtual bool equals(const AbstractCommand *other) const;
-    virtual void fillFromScriptValue(const QScriptValue *scriptValue, const CodeLocation &codeLocation);
+    virtual void fillFromScriptValue(const QJSValue *scriptValue, const CodeLocation &codeLocation);
 
     QString fullDescription(const QString &productName) const;
     const QString description() const { return m_description; }
@@ -93,8 +106,7 @@ public:
     virtual void store(PersistentPool &pool);
 
 protected:
-    AbstractCommand();
-    void applyCommandProperties(const QScriptValue *scriptValue);
+    void extractUnknownProperties(const QJSValue *scriptValue);
 
     Set<QString> m_predefinedProperties;
 
@@ -106,27 +118,44 @@ private:
                                      m_timeout, m_properties);
     }
 
-    QString m_description;
-    QString m_extendedDescription;
-    QString m_highlight;
-    bool m_ignoreDryRun;
-    bool m_silent;
+    QString m_description = defaultDescription();
+    QString m_extendedDescription = defaultExtendedDescription();
+    QString m_highlight = defaultHighLight();
+    bool m_ignoreDryRun = defaultIgnoreDryRun();
+    bool m_silent = defaultIsSilent();
     CodeLocation m_codeLocation;
     QString m_jobPool;
-    int m_timeout;
+    int m_timeout = defaultTimeout();
     QVariantMap m_properties;
 };
 
 class ProcessCommand : public AbstractCommand
 {
+    Q_OBJECT
+    Q_PROPERTY(QString program MEMBER m_program)
+    Q_PROPERTY(QStringList arguments MEMBER m_arguments)
+    Q_PROPERTY(QString workingDirectory MEMBER m_workingDir)
+    Q_PROPERTY(int maxExitCode MEMBER m_maxExitCode)
+    Q_PROPERTY(QJSValue stdoutFilterFunction READ stdoutFilterFunctionValue WRITE setStdoutFilterFunctionValue)
+    Q_PROPERTY(QJSValue stderrFilterFunction READ stderrFilterFunctionValue WRITE setStderrFilterFunctionValue)
+    Q_PROPERTY(int responseFileThreshold MEMBER m_responseFileThreshold)
+    Q_PROPERTY(int responseFileArgumentIndex MEMBER m_responseFileArgumentIndex)
+    Q_PROPERTY(QString responseFileUsagePrefix MEMBER m_responseFileUsagePrefix)
+    Q_PROPERTY(QString responseFileSeparator MEMBER m_responseFileSeparator)
+    Q_PROPERTY(QString stdoutFilePath MEMBER m_stdoutFilePath)
+    Q_PROPERTY(QString stderrFilePath MEMBER m_stderrFilePath)
+    Q_PROPERTY(QStringList environment READ environmentAsList WRITE setEnvironmentFromList)
+    Q_PROPERTY(QStringList relevantEnvironmentVariables MEMBER m_relevantEnvVars)
+
 public:
     static ProcessCommandPtr create() { return ProcessCommandPtr(new ProcessCommand); }
-    static void setupForJavaScript(QScriptValue targetObject);
+    static void setupForJavaScript(ScriptEngine *engine);
 
+    Q_INVOKABLE ProcessCommand(const QString &program = QString(),
+                               const QStringList &arguments = QStringList());
     CommandType type() const override { return ProcessCommandType; }
     bool equals(const AbstractCommand *otherAbstractCommand) const override;
-    void fillFromScriptValue(const QScriptValue *scriptValue,
-                             const CodeLocation &codeLocation) override;
+    void fillFromScriptValue(const QJSValue *scriptValue, const CodeLocation &codeLocation) override;
     const QString program() const { return m_program; }
     const QStringList arguments() const { return m_arguments; }
     const QString workingDir() const { return m_workingDir; }
@@ -149,11 +178,15 @@ public:
     void store(PersistentPool &pool) override;
 
 private:
-    ProcessCommand();
+    void setStderrFilterFunctionValue(const QJSValue &value) { m_stderrFilterFunctionValue = value; }
+    void setStdoutFilterFunctionValue(const QJSValue &value) { m_stdoutFilterFunctionValue = value; }
+    QJSValue stderrFilterFunctionValue() const { return m_stderrFilterFunctionValue; }
+    QJSValue stdoutFilterFunctionValue() const { return m_stdoutFilterFunctionValue; }
 
     int defaultResponseFileThreshold() const;
 
-    void getEnvironmentFromList(const QStringList &envList);
+    void setEnvironmentFromList(const QStringList &envList);
+    QStringList environmentAsList() const { return m_environment.toStringList(); }
 
     template<PersistentPool::OpType opType> void serializationOp(PersistentPool &pool)
     {
@@ -170,7 +203,9 @@ private:
     QString m_workingDir;
     int m_maxExitCode;
     QString m_stdoutFilterFunction;
+    QJSValue m_stdoutFilterFunctionValue;
     QString m_stderrFilterFunction;
+    QJSValue m_stderrFilterFunctionValue;
     int m_responseFileThreshold; // When to use response files? In bytes of (program name + arguments).
     int m_responseFileArgumentIndex;
     QString m_responseFileUsagePrefix;
@@ -184,24 +219,26 @@ private:
 
 class JavaScriptCommand : public AbstractCommand
 {
+    Q_OBJECT
+    Q_PROPERTY(QJSValue sourceCode READ sourceCodeValue WRITE setSourceCodeValue)
 public:
     static JavaScriptCommandPtr create() { return JavaScriptCommandPtr(new JavaScriptCommand); }
-    static void setupForJavaScript(QScriptValue targetObject);
+    static void setupForJavaScript(ScriptEngine *engine);
 
+    Q_INVOKABLE JavaScriptCommand();
     CommandType type() const override { return JavaScriptCommandType; }
     bool equals(const AbstractCommand *otherAbstractCommand) const override;
-    void fillFromScriptValue(const QScriptValue *scriptValue,
-                             const CodeLocation &codeLocation) override;
+    void fillFromScriptValue(const QJSValue *scriptValue, const CodeLocation &codeLocation) override;
 
     const QString &scopeName() const { return m_scopeName; }
     const QString &sourceCode() const { return m_sourceCode; }
-    void setSourceCode(const QString &str) { m_sourceCode = str; }
 
     void load(PersistentPool &pool) override;
     void store(PersistentPool &pool) override;
 
 private:
-    JavaScriptCommand();
+    const QJSValue &sourceCodeValue() const { return m_sourceCodeValue; }
+    void setSourceCodeValue(const QJSValue &value) { m_sourceCodeValue = value; }
 
     template<PersistentPool::OpType opType> void serializationOp(PersistentPool &pool)
     {
@@ -210,6 +247,7 @@ private:
 
     QString m_scopeName;
     QString m_sourceCode;
+    QJSValue m_sourceCodeValue;
 };
 
 class CommandList

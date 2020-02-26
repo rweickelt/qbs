@@ -45,7 +45,7 @@
 
 #include <QtCore/qstringlist.h>
 
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
@@ -88,9 +88,10 @@ void removeGeneratedArtifactFromDisk(const QString &filePath, const Logger &logg
 void disconnect(BuildGraphNode *u, BuildGraphNode *v);
 
 void setupScriptEngineForFile(ScriptEngine *engine, const FileContextBaseConstPtr &fileContext,
-        QScriptValue targetObject, const ObserveMode &observeMode);
+        QJSValue &targetObject, const ObserveMode &observeMode);
+
 void setupScriptEngineForProduct(ScriptEngine *engine, ResolvedProduct *product,
-                                 const ResolvedModule *module, QScriptValue targetObject,
+                                 const ResolvedModule *module, QJSValue &targetObject,
                                  bool setBuildEnvironment);
 QString relativeArtifactFileName(const Artifact *artifact); // Debugging helpers
 

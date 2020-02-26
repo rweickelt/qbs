@@ -65,7 +65,7 @@
 #include <QtCore/qtemporaryfile.h>
 #include <QtCore/qtimer.h>
 
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
@@ -215,30 +215,27 @@ QString ProcessCommandExecutor::filterProcessOutput(const QByteArray &_output,
     if (filterFunctionSource.isEmpty())
         return output;
 
-    QScriptValue scope = scriptEngine()->newObject();
+    QJSValue scope = scriptEngine()->newObject();
     scope.setPrototype(scriptEngine()->globalObject());
     for (QVariantMap::const_iterator it = command()->properties().constBegin();
             it != command()->properties().constEnd(); ++it) {
         scope.setProperty(it.key(), scriptEngine()->toScriptValue(it.value()));
     }
 
-    TemporaryGlobalObjectSetter tgos(scope);
-    QScriptValue filterFunction = scriptEngine()->evaluate(QLatin1String("var f = ")
-                                                           + filterFunctionSource
-                                                           + QLatin1String("; f"));
-    if (!filterFunction.isFunction()) {
+    QJSValue filterFunction =
+            scriptEngine()->evaluate(scope, QLatin1String("(%1)").arg(filterFunctionSource));
+
+    if (!filterFunction.isCallable()) {
         logger().printWarning(ErrorInfo(Tr::tr("Error in filter function: %1.\n%2")
                          .arg(filterFunctionSource, filterFunction.toString())));
         return output;
     }
 
-    QScriptValue outputArg = scriptEngine()->newArray(1);
-    outputArg.setProperty(0, scriptEngine()->toScriptValue(output));
-    QScriptValue filteredOutput = filterFunction.call(scriptEngine()->undefinedValue(), outputArg);
-    if (scriptEngine()->hasErrorOrException(filteredOutput)) {
+    QJSValue outputArg = scriptEngine()->toScriptValue(output);
+    QJSValue filteredOutput = scriptEngine()->call(&filterFunction, {outputArg});
+    if (filteredOutput.isError()) {
         logger().printWarning(ErrorInfo(Tr::tr("Error when calling output filter function: %1")
-                         .arg(scriptEngine()->lastErrorString(filteredOutput)),
-                                        scriptEngine()->lastErrorLocation(filteredOutput)));
+                         .arg(filteredOutput.toString())));
         return output;
     }
 

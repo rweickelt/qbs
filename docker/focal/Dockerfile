@@ -57,6 +57,7 @@ RUN apt-get update -qq && \
         libnanopb-dev \
         libprotobuf-dev \
         libgrpc++-dev \
+        llvm-8 \
         nanopb \
         ninja-build \
         nsis \
@@ -87,10 +88,9 @@ COPY scripts/install-qt.sh install-qt.sh
 
 RUN ./install-qt.sh --version ${QT_VERSION} qtbase qtdeclarative qtscript qttools qtx11extras qtscxml icu && \
     ./install-qt.sh --version ${QTCREATOR_VERSION} qtcreator && \
-    echo "export PATH=/opt/Qt/${QT_VERSION}/gcc_64/bin:/opt/Qt/Tools/QtCreator/bin:\${PATH}" > /etc/profile.d/qt.sh
+    echo "export PATH=/opt/Qt/${QT_VERSION}/gcc_64/bin:/opt/Qt/bin:\${PATH}" > /etc/profile.d/qt.sh
 
-ENV PATH=/opt/Qt/${QT_VERSION}/gcc_64/bin:/opt/Qt/Tools/QtCreator/bin:${PATH}
-
+ENV PATH=/opt/Qt/${QT_VERSION}/gcc_64/bin:/opt/Qt/bin:${PATH}
 
 # Configure Qbs
 USER $USER_NAME

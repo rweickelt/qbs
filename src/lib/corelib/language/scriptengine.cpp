@@ -1,7 +1,8 @@
+
+
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
+** Copyright (C) 2020 Richard Weickelt
 **
 ** This file is part of Qbs.
 **
@@ -46,11 +47,14 @@
 #include "preparescriptobserver.h"
 
 #include <buildgraph/artifact.h>
+#include <jsextensions/importhelper.h>
 #include <jsextensions/jsextensions.h>
+#include <language/language.h>
 #include <logging/translator.h>
 #include <tools/error.h>
 #include <tools/fileinfo.h>
 #include <tools/profiling.h>
+#include <tools/proxyhandler.h>
 #include <tools/qbsassert.h>
 #include <tools/qttools.h>
 #include <tools/stlutils.h>
@@ -63,65 +67,362 @@
 #include <QtCore/qtextstream.h>
 #include <QtCore/qtimer.h>
 
-#include <QtScript/qscriptclass.h>
-#include <QtScript/qscriptvalueiterator.h>
+#include <QtQml/qjsvalueiterator.h>
+#include <QtQml/private/qv4engine_p.h>
+#include <QtQml/private/qv4functionobject_p.h>
+#include <QtQml/private/qv4jscall_p.h>
+#include <QtQml/private/qv4object_p.h>
+#include <QtQml/private/qv4objectiterator_p.h>
+#include <QtQml/private/qv4objectproto_p.h>
+#include <QtQml/private/qv4proxy_p.h>
+#include <QtQml/private/qv4script_p.h>
+#include <QtQml/private/qv4value_p.h>
+#include <QtQml/private/qjsvalue_p.h>
+#include <QtQml/private/qqmlglobal_p.h>
 
 #include <functional>
 #include <set>
 #include <utility>
 
+QT_BEGIN_NAMESPACE
+
+namespace QV4 {
+
+static bool removeAllOccurrences(ArrayObject *target, ReturnedValue val) {
+    uint len = target->getLength();
+    bool found = false;
+    for (uint i = 0; i < len; ++i) {
+        ReturnedValue v = target->get(i);
+        if (v == val) {
+            found = true;
+            target->put(i, Value::undefinedValue());
+        }
+    }
+    return  found;
+}
+
+#ifdef __SANITIZE_ADDRESS__
+#define NO_SANITIZE __attribute__((no_sanitize_address))
+#else
+#define NO_SANITIZE
+#endif
+
+struct ProxyObjectOwnPropertyKeyIterator : OwnPropertyKeyIterator
+{
+    PersistentValue ownKeys;
+    uint index = 0;
+    uint len = 0;
+
+    NO_SANITIZE ProxyObjectOwnPropertyKeyIterator(ArrayObject *keys);
+    NO_SANITIZE ~ProxyObjectOwnPropertyKeyIterator() override = default;
+    NO_SANITIZE PropertyKey next(const Object *o, Property *pd = nullptr, PropertyAttributes *attrs = nullptr) override;
+};
+
+NO_SANITIZE ProxyObjectOwnPropertyKeyIterator::ProxyObjectOwnPropertyKeyIterator(QV4::ArrayObject *keys)
+{
+    ownKeys = keys;
+    len = keys->getLength();
+}
+
+NO_SANITIZE QV4::PropertyKey ProxyObjectOwnPropertyKeyIterator::next(const Object *m, Property *pd, PropertyAttributes *attrs)
+{
+    if (index >= len || m == nullptr)
+        return PropertyKey::invalid();
+
+    Scope scope(m);
+    ScopedObject keys(scope, ownKeys.asManaged());
+    PropertyKey key = PropertyKey::fromId(keys->get(PropertyKey::fromArrayIndex(index)));
+    ++index;
+
+    if (pd || attrs) {
+        ScopedProperty p(scope);
+        PropertyAttributes a = const_cast<Object *>(m)->getOwnProperty(key, pd ? pd : p);
+        if (attrs)
+            *attrs = a;
+    }
+
+    return key;
+}
+
+// Taken from https://codereview.qt-project.org/c/qt/qtdeclarative/+/323120
+NO_SANITIZE static QV4::PropertyAttributes patchedVirtualGetOwnProperty(const QV4::Managed *m,
+                                                       QV4::PropertyKey id,
+                                                       QV4::Property *p)
+{
+    using namespace QV4;
+    Scope scope(m);
+    const auto *o = static_cast<const ProxyObject *>(m);
+    if (!o->d()->handler) {
+        scope.engine->throwTypeError();
+        return Attr_Invalid;
+    }
+
+    ScopedObject target(scope, o->d()->target);
+    Q_ASSERT(target);
+    ScopedObject handler(scope, o->d()->handler);
+    ScopedString deleteProp(scope, scope.engine->newString(QStringLiteral("getOwnPropertyDescriptor")));
+    ScopedValue trap(scope, handler->get(deleteProp));
+    if (scope.hasException())
+        return Attr_Invalid;
+    if (trap->isNullOrUndefined())
+        return target->getOwnProperty(id, p);
+    if (!trap->isFunctionObject()) {
+        scope.engine->throwTypeError();
+        return Attr_Invalid;
+    }
+
+    JSCallData cdata(scope, 2, nullptr, handler);
+    cdata.args[0] = target;
+    cdata.args[1] = id.isArrayIndex() ? QV4::Value::fromUInt32(id.asArrayIndex()).toString(scope.engine) : id.asStringOrSymbol();
+
+    ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
+    if (scope.engine->hasException)
+        return Attr_Invalid;
+    if (!trapResult->isObject() && !trapResult->isUndefined()) {
+        scope.engine->throwTypeError();
+        return Attr_Invalid;
+    }
+
+    ScopedProperty targetDesc(scope);
+    PropertyAttributes targetAttributes = target->getOwnProperty(id, targetDesc);
+    if (trapResult->isUndefined()) {
+        if (p)
+            p->value = Encode::undefined();
+        if (targetAttributes == Attr_Invalid) {
+            return Attr_Invalid;
+        }
+        if (!targetAttributes.isConfigurable() || !target->isExtensible()) {
+            scope.engine->throwTypeError();
+            return Attr_Invalid;
+        }
+        return Attr_Invalid;
+    }
+
+    //bool extensibleTarget = target->isExtensible();
+    ScopedProperty resultDesc(scope);
+    PropertyAttributes resultAttributes;
+    ObjectPrototype::toPropertyDescriptor(scope.engine, trapResult, resultDesc, &resultAttributes);
+    resultDesc->completed(&resultAttributes);
+
+    if (!targetDesc->isCompatible(targetAttributes, resultDesc, resultAttributes)) {
+        scope.engine->throwTypeError();
+        return Attr_Invalid;
+    }
+
+    if (!resultAttributes.isConfigurable()) {
+        if (targetAttributes == Attr_Invalid || targetAttributes.isConfigurable()) {
+            scope.engine->throwTypeError();
+            return Attr_Invalid;
+        }
+    }
+
+    if (p) {
+       p->value = resultDesc->value;
+        p->set = resultDesc->set;
+    }
+    return resultAttributes;
+}
+
+// Stolen from https://codereview.qt-project.org/c/qt/qtdeclarative/+/327368
+NO_SANITIZE static OwnPropertyKeyIterator *patchedVirtualOwnPropertyKeys(const Object *m,
+                                                           Value *iteratorTarget)
+{
+    using namespace QV4;
+    Scope scope(m);
+    const auto *o = static_cast<const ProxyObject *>(m);
+    if (!o->d()->handler) {
+        scope.engine->throwTypeError();
+        return nullptr;
+    }
+
+    ScopedObject target(scope, o->d()->target);
+    Q_ASSERT(target);
+    ScopedObject handler(scope, o->d()->handler);
+    ScopedString name(scope, scope.engine->newString(QStringLiteral("ownKeys")));
+    ScopedValue trap(scope, handler->get(name));
+
+    if (scope.hasException())
+        return nullptr;
+    if (trap->isUndefined())
+        return target->ownPropertyKeys(iteratorTarget);
+    if (!trap->isFunctionObject()) {
+        scope.engine->throwTypeError();
+        return nullptr;
+    }
+
+    JSCallData cdata(scope, 1, nullptr, handler);
+    cdata.args[0] = target;
+    ScopedObject trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
+    if (scope.engine->hasException)
+        return nullptr;
+    if (!trapResult) {
+        scope.engine->throwTypeError();
+        return nullptr;
+    }
+
+    uint len = trapResult->getLength();
+    ScopedArrayObject trapKeys(scope, scope.engine->newArrayObject());
+    ScopedStringOrSymbol key(scope);
+    for (uint i = 0; i < len; ++i) {
+        key = trapResult->get(i);
+        if (scope.engine->hasException)
+            return nullptr;
+        if (!key) {
+            scope.engine->throwTypeError();
+            return nullptr;
+        }
+        Value keyAsValue = Value::fromReturnedValue(key->toPropertyKey().id());
+        trapKeys->push_back(keyAsValue);
+    }
+
+    ScopedArrayObject targetConfigurableKeys(scope, scope.engine->newArrayObject());
+    ScopedArrayObject targetNonConfigurableKeys(scope, scope.engine->newArrayObject());
+    ObjectIterator it(scope, target, ObjectIterator::EnumerableOnly);
+    ScopedPropertyKey k(scope);
+    while (1) {
+        PropertyAttributes attrs;
+        k = it.next(nullptr, &attrs);
+        if (!k->isValid())
+            break;
+        Value keyAsValue = Value::fromReturnedValue(k->id());
+        if (attrs.isConfigurable())
+            targetConfigurableKeys->push_back(keyAsValue);
+        else
+            targetNonConfigurableKeys->push_back(keyAsValue);
+    }
+    if (target->isExtensible() && targetNonConfigurableKeys->getLength() == 0) {
+        *iteratorTarget = *m;
+        return new ProxyObjectOwnPropertyKeyIterator(trapKeys);
+    }
+
+    ScopedArrayObject uncheckedResultKeys(scope, scope.engine->newArrayObject());
+    uncheckedResultKeys->copyArrayData(trapKeys);
+
+    len = targetNonConfigurableKeys->getLength();
+    for (uint i = 0; i < len; ++i) {
+        k = PropertyKey::fromId(targetNonConfigurableKeys->get(i));
+        if (!removeAllOccurrences(uncheckedResultKeys, k->id())) {
+            scope.engine->throwTypeError();
+            return nullptr;
+        }
+    }
+
+    if (target->isExtensible()) {
+        *iteratorTarget = *m;
+        return new ProxyObjectOwnPropertyKeyIterator(trapKeys);
+    }
+
+    len = targetConfigurableKeys->getLength();
+    for (uint i = 0; i < len; ++i) {
+        k = PropertyKey::fromId(targetConfigurableKeys->get(i));
+        if (!removeAllOccurrences(uncheckedResultKeys, k->id())) {
+            scope.engine->throwTypeError();
+            return nullptr;
+        }
+    }
+
+    len = uncheckedResultKeys->getLength();
+    for (uint i = 0; i < len; ++i) {
+        if (uncheckedResultKeys->get(i) != Encode::undefined()) {
+            scope.engine->throwTypeError();
+            return nullptr;
+        }
+    }
+
+    *iteratorTarget = *m;
+    return new ProxyObjectOwnPropertyKeyIterator(trapKeys);
+}
+
+}
+
+QT_END_NAMESPACE
+
 namespace qbs {
 namespace Internal {
 
-static QString getterFuncHelperProperty() { return QStringLiteral("qbsdata"); }
+namespace {
+const QString proxyFactoryCode = QStringLiteral(R"QBS(
+     (function(target, handler){
+        return new Proxy(target, handler);
+     })
+)QBS");
 
-const bool debugJSImports = false;
-
-bool operator==(const ScriptEngine::PropertyCacheKey &lhs,
-        const ScriptEngine::PropertyCacheKey &rhs)
-{
-    return lhs.m_propertyMap == rhs.m_propertyMap
-            && lhs.m_moduleName == rhs.m_moduleName
-            && lhs.m_propertyName == rhs.m_propertyName;
+const QString definePropertyCode = QStringLiteral(R"QBS(
+     (function(obj, name, handler){
+        Object.defineProperty(obj, name, handler);
+     })
+)QBS");
 }
 
-static inline uint combineHash(uint h1, uint h2, uint seed)
-{
-    // stolen from qHash(QPair)
-    return ((h1 << 16) | (h1 >> 16)) ^ h2 ^ seed;
-}
+// Work-around for QTBUG-86323 and QTBUG-88786. Only needed before Qt 6.1
+struct VTablePatcher {
+    VTablePatcher(ScriptEngine *engine)
+       : engine(engine),
+         originalVtable(getVtable())
+    {
+        // TODO: Is there a way to get the internal class object without creating a proxy?
+        QJSValue dummyProxy = engine->newProxyObject(new QObject());
+        internalClass = QJSValuePrivate::getValue(&dummyProxy)->objectValue()->internalClass();
 
-uint qHash(const ScriptEngine::PropertyCacheKey &k, uint seed = 0)
-{
-    return combineHash(qHash(k.m_moduleName),
-                       combineHash(qHash(k.m_propertyName), qHash(k.m_propertyMap), seed), seed);
-}
+        if (!patchedVtable) {
+            memcpy(patchedVTableMemory, internalClass->vtable, sizeof(QV4::VTable));
+            patchedVtable = reinterpret_cast<QV4::VTable *>(patchedVTableMemory);
+            patchedVtable->getOwnProperty = &QV4::patchedVirtualGetOwnProperty;
+            patchedVtable->ownPropertyKeys = &QV4::patchedVirtualOwnPropertyKeys;
+        }
+        setPatchEnabled(true);
+    }
+
+    ~VTablePatcher() {
+        setPatchEnabled(false);
+    }
+
+    const QV4::VTable *getVtable()
+    {
+        return engine->handle()->classes[QV4::EngineBase::Class_ProxyObject]->vtable;
+    }
+
+    void setPatchEnabled(bool enabled)
+    {
+        if (enabled)
+            internalClass->vtable = patchedVtable;
+        else
+            internalClass->vtable = originalVtable;
+    }
+
+    ScriptEngine *engine = nullptr;
+    QV4::Heap::InternalClass* internalClass = nullptr;
+    const QV4::VTable *originalVtable = nullptr;
+
+    static QV4::VTable *patchedVtable;
+    static quint8 patchedVTableMemory[sizeof(QV4::VTable)];
+};
+
+quint8 VTablePatcher::patchedVTableMemory[sizeof(QV4::VTable)];
+QV4::VTable *VTablePatcher::patchedVtable;
 
 std::mutex ScriptEngine::m_creationDestructionMutex;
 
 ScriptEngine::ScriptEngine(Logger &logger, EvalContext evalContext, QObject *parent)
-    : QScriptEngine(parent), m_scriptImporter(new ScriptImporter(this)),
-      m_modulePropertyScriptClass(nullptr),
-      m_propertyCacheEnabled(true), m_active(false), m_logger(logger), m_evalContext(evalContext),
-      m_observer(new PrepareScriptObserver(this, UnobserveMode::Disabled))
+    : QJSEngine(parent), m_logger(logger), m_evalContext(evalContext)
 {
-    setProcessEventsInterval(1000); // For the cancelation mechanism to work.
-    m_cancelationError = currentContext()->throwValue(tr("Execution canceled"));
-    QScriptValue objectProto = globalObject().property(QStringLiteral("Object"));
-    m_definePropertyFunction = objectProto.property(QStringLiteral("defineProperty"));
-    QBS_ASSERT(m_definePropertyFunction.isFunction(), /* ignore */);
-    m_emptyFunction = evaluate(QStringLiteral("(function(){})"));
-    QBS_ASSERT(m_emptyFunction.isFunction(), /* ignore */);
-    // Initially push a new context to turn off scope chain insanity mode.
-    QScriptEngine::pushContext();
-    installQbsBuiltins();
+    this->QJSEngine::globalObject().setProperty(QStringLiteral("console"),
+                               JsExtensions::loadExtension(this, QStringLiteral("console")));
     extendJavaScriptBuiltins();
-}
 
-ScriptEngine *ScriptEngine::create(Logger &logger, EvalContext evalContext, QObject *parent)
-{
-    std::lock_guard<std::mutex> lock(m_creationDestructionMutex);
-    return new ScriptEngine(logger, evalContext, parent);
+    m_proxyFactory = evaluate(proxyFactoryCode, QStringLiteral("proxy.js"));
+    if (m_proxyFactory.isError())
+      qWarning() << m_proxyFactory.toString();
+    Q_ASSERT(!m_proxyFactory.isError());
+
+    m_definePropertyFunction = evaluate(definePropertyCode, QStringLiteral("defineProperty.js"));
+    if (m_definePropertyFunction.isError())
+      qWarning() << m_definePropertyFunction.toString();
+    Q_ASSERT(!m_definePropertyFunction.isError());
+
+    m_vtablePatcher = std::make_unique<VTablePatcher>(this);
+    m_globalObject = this->QJSEngine::globalObject();
+    // m_scopeProxyHandler = new DefaultProxyHandler();
 }
 
 ScriptEngine::~ScriptEngine()
@@ -130,88 +431,33 @@ ScriptEngine::~ScriptEngine()
     connect(this, &QObject::destroyed, std::bind(&std::mutex::unlock, &m_creationDestructionMutex));
 
     releaseResourcesOfScriptObjects();
-    delete (m_scriptImporter);
-    if (m_elapsedTimeImporting != -1) {
-        m_logger.qbsLog(LoggerInfo, true) << Tr::tr("Setting up imports took %1.")
-                                             .arg(elapsedTimeString(m_elapsedTimeImporting));
+    if (m_profilingEnabled) {
+        const auto elapsedTime = ImportHelper::instance(this)->elapsedTime();
+        logger().qbsLog(LoggerInfo, true)
+                << Tr::tr("Setting up imports took %1.").arg(elapsedTimeString(elapsedTime));
     }
-    delete m_modulePropertyScriptClass;
-    delete m_productPropertyScriptClass;
+
+    // delete m_scopeProxyHandler;
 }
 
-void ScriptEngine::import(const FileContextBaseConstPtr &fileCtx, QScriptValue &targetObject,
-                          ObserveMode observeMode)
+void ScriptEngine::import(const FileContextBaseConstPtr &fileCtx, QJSValue &targetObject,
+                             ObserveMode observeMode)
 {
-    installImportFunctions();
-    m_currentDirPathStack.push(FileInfo::path(fileCtx->filePath()));
-    m_extensionSearchPathsStack.push(fileCtx->searchPaths());
     m_observeMode = observeMode;
-
-    for (const JsImport &jsImport : fileCtx->jsImports())
-        import(jsImport, targetObject);
-    if (m_observeMode == ObserveMode::Enabled) {
-        for (QScriptValue &sv : m_requireResults)
-            observeImport(sv);
-        m_requireResults.clear();
-    }
-
-    m_currentDirPathStack.pop();
-    m_extensionSearchPathsStack.pop();
-    uninstallImportFunctions();
+    const auto *context = ImportHelper::instance(this)->fileContextScope(fileCtx);
+    for (auto it = context->imports.constBegin(); it != context->imports.constEnd(); ++it)
+        targetObject.setProperty(it.key(), it.value());
 }
 
-void ScriptEngine::import(const JsImport &jsImport, QScriptValue &targetObject)
+bool ScriptEngine::gatherFileResults() const
 {
-    QBS_ASSERT(targetObject.isObject(), return);
-    QBS_ASSERT(targetObject.engine() == this, return);
-
-    if (debugJSImports)
-        qDebug() << "[ENGINE] import into " << jsImport.scopeName;
-
-    QScriptValue jsImportValue = m_jsImportCache.value(jsImport);
-    if (jsImportValue.isValid()) {
-        if (debugJSImports)
-            qDebug() << "[ENGINE] " << jsImport.filePaths << " (cache hit)";
-    } else {
-        if (debugJSImports)
-            qDebug() << "[ENGINE] " << jsImport.filePaths << " (cache miss)";
-        jsImportValue = newObject();
-        for (const QString &filePath : jsImport.filePaths)
-            importFile(filePath, jsImportValue);
-        m_jsImportCache.insert(jsImport, jsImportValue);
-        std::vector<QString> &filePathsForScriptValue
-                = m_filePathsPerImport[jsImportValue.objectId()];
-        for (const QString &fp : jsImport.filePaths)
-            filePathsForScriptValue.push_back(fp);
-    }
-
-    QScriptValue sv = newObject();
-    sv.setPrototype(jsImportValue);
-    sv.setProperty(StringConstants::importScopeNamePropertyInternal(), jsImport.scopeName);
-    targetObject.setProperty(jsImport.scopeName, sv);
-    if (m_observeMode == ObserveMode::Enabled)
-        observeImport(jsImportValue);
+    return evalContext() == EvalContext::PropertyEvaluation
+            || evalContext() == EvalContext::ProbeExecution;
 }
 
-void ScriptEngine::observeImport(QScriptValue &jsImport)
+void ScriptEngine::cancel()
 {
-    if (!m_observer->addImportId(jsImport.objectId()))
-        return;
-    QScriptValueIterator it(jsImport);
-    while (it.hasNext()) {
-        it.next();
-        if (it.flags() & QScriptValue::PropertyGetter)
-            continue;
-        QScriptValue property = it.value();
-        if (!property.isFunction())
-            continue;
-        setObservedProperty(jsImport, it.name(), property);
-    }
-}
-
-void ScriptEngine::clearImportsCache()
-{
-    m_jsImportCache.clear();
+    setInterrupted(true);
 }
 
 void ScriptEngine::checkContext(const QString &operation,
@@ -240,321 +486,25 @@ void ScriptEngine::checkContext(const QString &operation,
             QBS_ASSERT(false, continue);
             break;
         }
-        m_logger.printWarning(ErrorInfo(warning, currentContext()->backtrace()));
+        m_logger.printWarning(ErrorInfo(warning, QStringList()));
         return;
     }
 }
 
-void ScriptEngine::addPropertyRequestedFromArtifact(const Artifact *artifact,
-                                                    const Property &property)
+void ScriptEngine::addFileLastModifiedResult(const QString &filePath, const FileTime &fileTime)
 {
-    m_propertiesRequestedFromArtifact[artifact->filePath()] << property;
+    if (gatherFileResults())
+        m_fileLastModifiedResult.insert(filePath, fileTime);
 }
 
-void ScriptEngine::addImportRequestedInScript(qint64 importValueId)
+ResourceAcquiringScriptObject::~ResourceAcquiringScriptObject()
 {
-    // Import list is assumed to be small, so let's not use a set.
-    if (!contains(m_importsRequestedInScript, importValueId))
-        m_importsRequestedInScript.push_back(importValueId);
-}
-
-std::vector<QString> ScriptEngine::importedFilesUsedInScript() const
-{
-    std::vector<QString> files;
-    for (qint64 usedImport : m_importsRequestedInScript) {
-        const auto it = m_filePathsPerImport.find(usedImport);
-        QBS_CHECK(it != m_filePathsPerImport.cend());
-        const std::vector<QString> &filePathsForImport = it->second;
-        for (const QString &fp : filePathsForImport)
-            if (!contains(files, fp))
-                files.push_back(fp);
+    // Unregister from the engine in case we are destroyed before
+    // releseResources() has been called. This happens sometimes
+    // and cannot be controlled.
+    if (!m_released) {
+        m_engine->removeResourceAcquiringScriptObject(this);
     }
-    return files;
-}
-
-void ScriptEngine::enableProfiling(bool enable)
-{
-    m_elapsedTimeImporting = enable ? 0 : -1;
-}
-
-void ScriptEngine::addToPropertyCache(const QString &moduleName, const QString &propertyName,
-        const PropertyMapConstPtr &propertyMap, const QVariant &value)
-{
-    m_propertyCache.insert(PropertyCacheKey(moduleName, propertyName, propertyMap), value);
-}
-
-QVariant ScriptEngine::retrieveFromPropertyCache(const QString &moduleName,
-        const QString &propertyName, const PropertyMapConstPtr &propertyMap)
-{
-    return m_propertyCache.value(PropertyCacheKey(moduleName, propertyName, propertyMap));
-}
-
-void ScriptEngine::defineProperty(QScriptValue &object, const QString &name,
-                                  const QScriptValue &descriptor)
-{
-    QScriptValue arguments = newArray();
-    arguments.setProperty(0, object);
-    arguments.setProperty(1, name);
-    arguments.setProperty(2, descriptor);
-    QScriptValue result = m_definePropertyFunction.call(QScriptValue(), arguments);
-    QBS_ASSERT(!hasErrorOrException(result), qDebug() << name << result.toString());
-}
-
-static QScriptValue js_observedGet(QScriptContext *context, QScriptEngine *,
-                                   ScriptPropertyObserver * const observer)
-{
-    const QScriptValue data = context->callee().property(getterFuncHelperProperty());
-    const QScriptValue value = data.property(2);
-    observer->onPropertyRead(data.property(0), data.property(1).toVariant().toString(), value);
-    return value;
-}
-
-void ScriptEngine::setObservedProperty(QScriptValue &object, const QString &name,
-                                       const QScriptValue &value)
-{
-    QScriptValue data = newArray();
-    data.setProperty(0, object);
-    data.setProperty(1, name);
-    data.setProperty(2, value);
-    QScriptValue getterFunc = newFunction(js_observedGet,
-                                          static_cast<ScriptPropertyObserver *>(m_observer.get()));
-    getterFunc.setProperty(getterFuncHelperProperty(), data);
-    object.setProperty(name, getterFunc, QScriptValue::PropertyGetter);
-    if (m_observer->unobserveMode() == UnobserveMode::Enabled)
-        m_observedProperties.emplace_back(object, name, value);
-}
-
-void ScriptEngine::unobserveProperties()
-{
-    for (auto &elem : m_observedProperties) {
-        QScriptValue &object = std::get<0>(elem);
-        const QString &name = std::get<1>(elem);
-        const QScriptValue &value = std::get<2>(elem);
-        object.setProperty(name, QScriptValue(), QScriptValue::PropertyGetter);
-        object.setProperty(name, value, QScriptValue::PropertyFlags());
-    }
-    m_observedProperties.clear();
-}
-
-static QScriptValue js_deprecatedGet(QScriptContext *context, QScriptEngine *qtengine)
-{
-    const auto engine = static_cast<const ScriptEngine *>(qtengine);
-    const QScriptValue data = context->callee().property(getterFuncHelperProperty());
-    engine->logger().qbsWarning()
-            << ScriptEngine::tr("Property %1 is deprecated. Please use %2 instead.").arg(
-                   data.property(0).toString(), data.property(1).toString());
-    return data.property(2);
-}
-
-void ScriptEngine::setDeprecatedProperty(QScriptValue &object, const QString &oldName,
-        const QString &newName, const QScriptValue &value)
-{
-    QScriptValue data = newArray();
-    data.setProperty(0, oldName);
-    data.setProperty(1, newName);
-    data.setProperty(2, value);
-    QScriptValue getterFunc = newFunction(js_deprecatedGet);
-    getterFunc.setProperty(getterFuncHelperProperty(), data);
-    object.setProperty(oldName, getterFunc, QScriptValue::PropertyGetter
-                       | QScriptValue::SkipInEnumeration);
-}
-
-QProcessEnvironment ScriptEngine::environment() const
-{
-    return m_environment;
-}
-
-void ScriptEngine::setEnvironment(const QProcessEnvironment &env)
-{
-    m_environment = env;
-}
-
-void ScriptEngine::importFile(const QString &filePath, QScriptValue &targetObject)
-{
-    AccumulatingTimer importTimer(m_elapsedTimeImporting != -1 ? &m_elapsedTimeImporting : nullptr);
-    QScriptValue &evaluationResult = m_jsFileCache[filePath];
-    if (evaluationResult.isValid()) {
-        ScriptImporter::copyProperties(evaluationResult, targetObject);
-        return;
-    }
-    QFile file(filePath);
-    if (Q_UNLIKELY(!file.open(QFile::ReadOnly)))
-        throw ErrorInfo(tr("Cannot open '%1'.").arg(filePath));
-    QTextStream stream(&file);
-    setupDefaultCodec(stream);
-    const QString sourceCode = stream.readAll();
-    file.close();
-    m_currentDirPathStack.push(FileInfo::path(filePath));
-    evaluationResult = m_scriptImporter->importSourceCode(sourceCode, filePath, targetObject);
-    m_currentDirPathStack.pop();
-}
-
-static QString findExtensionDir(const QStringList &searchPaths, const QString &extensionPath)
-{
-    for (const QString &searchPath : searchPaths) {
-        const QString dirPath = searchPath + QStringLiteral("/imports/") + extensionPath;
-        QFileInfo fi(dirPath);
-        if (fi.exists() && fi.isDir())
-            return dirPath;
-    }
-    return {};
-}
-
-static QScriptValue mergeExtensionObjects(const QScriptValueList &lst)
-{
-    QScriptValue result;
-    for (const QScriptValue &v : lst) {
-        if (!result.isValid()) {
-            result = v;
-            continue;
-        }
-        QScriptValueIterator svit(v);
-        while (svit.hasNext()) {
-            svit.next();
-            result.setProperty(svit.name(), svit.value());
-        }
-    }
-    return result;
-}
-
-static QScriptValue loadInternalExtension(QScriptContext *context, ScriptEngine *engine,
-        const QString &uri)
-{
-    const QString name = uri.mid(4);  // remove the "qbs." part
-    QScriptValue extensionObj = JsExtensions::loadExtension(engine, name);
-    if (!extensionObj.isValid()) {
-        return context->throwError(ScriptEngine::tr("loadExtension: "
-                                                    "cannot load extension '%1'.").arg(uri));
-    }
-    return extensionObj;
-}
-
-QScriptValue ScriptEngine::js_loadExtension(QScriptContext *context, QScriptEngine *qtengine)
-{
-    if (context->argumentCount() < 1) {
-        return context->throwError(
-                    ScriptEngine::tr("The loadExtension function requires "
-                                     "an extension name."));
-    }
-
-    const auto engine = static_cast<const ScriptEngine *>(qtengine);
-    ErrorInfo deprWarning(Tr::tr("The loadExtension() function is deprecated and will be "
-                                 "removed in a future version of Qbs. Use require() "
-                                 "instead."), context->backtrace());
-    engine->logger().printWarning(deprWarning);
-
-    return js_require(context, qtengine);
-}
-
-QScriptValue ScriptEngine::js_loadFile(QScriptContext *context, QScriptEngine *qtengine)
-{
-    if (context->argumentCount() < 1) {
-        return context->throwError(
-                    ScriptEngine::tr("The loadFile function requires a file path."));
-    }
-
-    const auto engine = static_cast<const ScriptEngine *>(qtengine);
-    ErrorInfo deprWarning(Tr::tr("The loadFile() function is deprecated and will be "
-                                 "removed in a future version of Qbs. Use require() "
-                                 "instead."), context->backtrace());
-    engine->logger().printWarning(deprWarning);
-
-    return js_require(context, qtengine);
-}
-
-QScriptValue ScriptEngine::js_require(QScriptContext *context, QScriptEngine *qtengine)
-{
-    const auto engine = static_cast<ScriptEngine *>(qtengine);
-    if (context->argumentCount() < 1) {
-        return context->throwError(
-                    ScriptEngine::tr("The require function requires a module name or path."));
-    }
-
-    const QString moduleName = context->argument(0).toString();
-
-    // First try to load a named module if the argument doesn't look like a file path
-    if (!moduleName.contains(QLatin1Char('/'))) {
-        if (engine->m_extensionSearchPathsStack.empty())
-            return context->throwError(
-                        ScriptEngine::tr("require: internal error. No search paths."));
-
-        if (engine->m_logger.debugEnabled()) {
-            engine->m_logger.qbsDebug()
-                    << "[require] loading extension " << moduleName;
-        }
-
-        QString moduleNameAsPath = moduleName;
-        moduleNameAsPath.replace(QLatin1Char('.'), QLatin1Char('/'));
-        const QStringList searchPaths = engine->m_extensionSearchPathsStack.top();
-        const QString dirPath = findExtensionDir(searchPaths, moduleNameAsPath);
-        if (dirPath.isEmpty()) {
-            if (moduleName.startsWith(QStringLiteral("qbs.")))
-                return loadInternalExtension(context, engine, moduleName);
-        } else {
-            QDirIterator dit(dirPath, StringConstants::jsFileWildcards(),
-                             QDir::Files | QDir::Readable);
-            QScriptValueList values;
-            std::vector<QString> filePaths;
-            try {
-                while (dit.hasNext()) {
-                    const QString filePath = dit.next();
-                    if (engine->m_logger.debugEnabled()) {
-                        engine->m_logger.qbsDebug()
-                                << "[require] importing file " << filePath;
-                    }
-                    QScriptValue obj = engine->newObject();
-                    engine->importFile(filePath, obj);
-                    values << obj;
-                    filePaths.push_back(filePath);
-                }
-            } catch (const ErrorInfo &e) {
-                return context->throwError(e.toString());
-            }
-
-            if (!values.empty()) {
-                const QScriptValue mergedValue = mergeExtensionObjects(values);
-                engine->m_requireResults.push_back(mergedValue);
-                engine->m_filePathsPerImport[mergedValue.objectId()] = filePaths;
-                return mergedValue;
-            }
-        }
-
-        // The module name might be a file name component, which is assumed to be to a JavaScript
-        // file located in the current directory search path; try that next
-    }
-
-    if (engine->m_currentDirPathStack.empty()) {
-        return context->throwError(
-            ScriptEngine::tr("require: internal error. No current directory."));
-    }
-
-    QScriptValue result;
-    try {
-        const QString filePath = FileInfo::resolvePath(engine->m_currentDirPathStack.top(),
-                                                       moduleName);
-        result = engine->newObject();
-        engine->importFile(filePath, result);
-        static const QString scopeNamePrefix = QStringLiteral("_qbs_scope_");
-        const QString scopeName = scopeNamePrefix + QString::number(qHash(filePath), 16);
-        result.setProperty(StringConstants::importScopeNamePropertyInternal(), scopeName);
-        context->thisObject().setProperty(scopeName, result);
-        engine->m_requireResults.push_back(result);
-        engine->m_filePathsPerImport[result.objectId()] = { filePath };
-    } catch (const ErrorInfo &e) {
-        result = context->throwError(e.toString());
-    }
-
-    return result;
-}
-
-QScriptClass *ScriptEngine::modulePropertyScriptClass() const
-{
-    return m_modulePropertyScriptClass;
-}
-
-void ScriptEngine::setModulePropertyScriptClass(QScriptClass *modulePropertyScriptClass)
-{
-    m_modulePropertyScriptClass = modulePropertyScriptClass;
 }
 
 void ScriptEngine::addResourceAcquiringScriptObject(ResourceAcquiringScriptObject *obj)
@@ -562,12 +512,19 @@ void ScriptEngine::addResourceAcquiringScriptObject(ResourceAcquiringScriptObjec
     m_resourceAcquiringScriptObjects.push_back(obj);
 }
 
+void ScriptEngine::removeResourceAcquiringScriptObject(ResourceAcquiringScriptObject *obj)
+{
+    removeOne(m_resourceAcquiringScriptObjects, obj);
+}
+
 void ScriptEngine::releaseResourcesOfScriptObjects()
 {
     if (m_resourceAcquiringScriptObjects.empty())
         return;
-    std::for_each(m_resourceAcquiringScriptObjects.begin(), m_resourceAcquiringScriptObjects.end(),
-                  std::mem_fn(&ResourceAcquiringScriptObject::releaseResources));
+    for (auto obj: m_resourceAcquiringScriptObjects) {
+        obj->releaseResources();
+        obj->setReleased();
+    }
     m_resourceAcquiringScriptObjects.clear();
 }
 
@@ -594,159 +551,74 @@ void ScriptEngine::addDirectoryEntriesResult(const QString &path, QDir::Filters 
     }
 }
 
-void ScriptEngine::addFileLastModifiedResult(const QString &filePath, const FileTime &fileTime)
-{
-    if (gatherFileResults())
-        m_fileLastModifiedResult.insert(filePath, fileTime);
-}
-
 Set<QString> ScriptEngine::imports() const
 {
-    Set<QString> filePaths;
-    for (auto it = m_jsImportCache.cbegin(); it != m_jsImportCache.cend(); ++it) {
-        const JsImport &jsImport = it.key();
-        for (const QString &filePath : jsImport.filePaths)
-            filePaths << filePath;
-    }
-    for (const auto &kv : m_filePathsPerImport) {
-        for (const QString &fp : kv.second)
-            filePaths << fp;
-    }
-    return filePaths;
+    return ImportHelper::instance(this)->importedFiles();
 }
 
-QScriptValueList ScriptEngine::argumentList(const QStringList &argumentNames,
-        const QScriptValue &context)
+void ScriptEngine::addImportedFileUsedInScript(const QString &filePath)
 {
-    QScriptValueList result;
-    for (const auto &name : argumentNames)
-        result += context.property(name);
-    return result;
+    // Import list is assumed to be small, so let's not use a set.
+    if (!contains(m_importedFilesUsedInScript, filePath))
+        m_importedFilesUsedInScript.push_back(filePath);
 }
 
-CodeLocation ScriptEngine::lastErrorLocation(const QScriptValue &v,
-                                             const CodeLocation &fallbackLocation) const
+void ScriptEngine::addPropertyRequestedFromArtifact(const Artifact *artifact,
+                                                       const Property &property)
 {
-    const QScriptValue &errorVal = lastErrorValue(v);
-    const CodeLocation errorLoc(errorVal.property(StringConstants::fileNameProperty()).toString(),
-            errorVal.property(QStringLiteral("lineNumber")).toInt32(),
-            errorVal.property(QStringLiteral("expressionCaretOffset")).toInt32(),
-            false);
-    return errorLoc.isValid() ? errorLoc : fallbackLocation;
+    m_propertiesRequestedFromArtifact[artifact->filePath()] << property;
 }
 
-ErrorInfo ScriptEngine::lastError(const QScriptValue &v, const CodeLocation &fallbackLocation) const
+std::vector<QString> ScriptEngine::importedFilesUsedInScript() const
 {
-    const QString msg = lastErrorString(v);
-    CodeLocation errorLocation = lastErrorLocation(v);
-    if (errorLocation.isValid())
-        return ErrorInfo(msg, errorLocation);
-    const QStringList backtrace = uncaughtExceptionBacktraceOrEmpty();
-    if (!backtrace.empty()) {
-        ErrorInfo e(msg, backtrace);
-        if (e.hasLocation())
-            return e;
-    }
-    return ErrorInfo(msg, fallbackLocation);
+    return m_importedFilesUsedInScript;
 }
 
-void ScriptEngine::cancel()
+void ScriptEngine::unobserveProperties()
 {
-    QTimer::singleShot(0, this, [this] { abort(); });
+
 }
 
-void ScriptEngine::abort()
+void ScriptEngine::enableProfiling(bool enabled)
 {
-    abortEvaluation(m_cancelationError);
-}
-
-bool ScriptEngine::gatherFileResults() const
-{
-    return evalContext() == EvalContext::PropertyEvaluation
-            || evalContext() == EvalContext::ProbeExecution;
-}
-
-class JSTypeExtender
-{
-public:
-    JSTypeExtender(ScriptEngine *engine, const QString &typeName)
-        : m_engine(engine)
-    {
-        m_proto = engine->globalObject().property(typeName)
-                .property(QStringLiteral("prototype"));
-        QBS_ASSERT(m_proto.isObject(), return);
-        m_descriptor = engine->newObject();
-    }
-
-    void addFunction(const QString &name, const QString &code)
-    {
-        QScriptValue f = m_engine->evaluate(code);
-        QBS_ASSERT(f.isFunction(), return);
-        m_descriptor.setProperty(QStringLiteral("value"), f);
-        m_engine->defineProperty(m_proto, name, m_descriptor);
-    }
-
-private:
-    ScriptEngine *const m_engine;
-    QScriptValue m_proto;
-    QScriptValue m_descriptor;
-};
-
-static QScriptValue js_consoleError(QScriptContext *context, QScriptEngine *engine, Logger *logger)
-{
-    if (Q_UNLIKELY(context->argumentCount() != 1))
-        return context->throwError(QScriptContext::SyntaxError,
-                                   QStringLiteral("console.error() expects 1 argument"));
-    logger->qbsLog(LoggerError) << context->argument(0).toString();
-    return engine->undefinedValue();
-}
-
-static QScriptValue js_consoleWarn(QScriptContext *context, QScriptEngine *engine, Logger *logger)
-{
-    if (Q_UNLIKELY(context->argumentCount() != 1))
-        return context->throwError(QScriptContext::SyntaxError,
-                                   QStringLiteral("console.warn() expects 1 argument"));
-    logger->qbsWarning() << context->argument(0).toString();
-    return engine->undefinedValue();
-}
-
-static QScriptValue js_consoleInfo(QScriptContext *context, QScriptEngine *engine, Logger *logger)
-{
-    if (Q_UNLIKELY(context->argumentCount() != 1))
-        return context->throwError(QScriptContext::SyntaxError,
-                                   QStringLiteral("console.info() expects 1 argument"));
-    logger->qbsInfo() << context->argument(0).toString();
-    return engine->undefinedValue();
-}
-
-static QScriptValue js_consoleDebug(QScriptContext *context, QScriptEngine *engine, Logger *logger)
-{
-    if (Q_UNLIKELY(context->argumentCount() != 1))
-        return context->throwError(QScriptContext::SyntaxError,
-                                   QStringLiteral("console.debug() expects 1 argument"));
-    logger->qbsDebug() << context->argument(0).toString();
-    return engine->undefinedValue();
-}
-
-static QScriptValue js_consoleLog(QScriptContext *context, QScriptEngine *engine, Logger *logger)
-{
-    return js_consoleDebug(context, engine, logger);
-}
-
-void ScriptEngine::installQbsBuiltins()
-{
-    globalObject().setProperty(StringConstants::qbsModule(), m_qbsObject = newObject());
-
-    globalObject().setProperty(QStringLiteral("console"), m_consoleObject = newObject());
-    installConsoleFunction(QStringLiteral("debug"), &js_consoleDebug);
-    installConsoleFunction(QStringLiteral("error"), &js_consoleError);
-    installConsoleFunction(QStringLiteral("info"), &js_consoleInfo);
-    installConsoleFunction(QStringLiteral("log"), &js_consoleLog);
-    installConsoleFunction(QStringLiteral("warn"), &js_consoleWarn);
+    m_profilingEnabled = enabled;
+    ImportHelper::instance(this)->setProfilingEnabled(enabled);
 }
 
 void ScriptEngine::extendJavaScriptBuiltins()
 {
+    class JSTypeExtender
+    {
+    public:
+        JSTypeExtender(ScriptEngine *engine, const QString &typeName)
+            : m_engine(engine), m_typeName(typeName)
+        {
+            m_jsProto = engine->QJSEngine::globalObject().property(typeName).property(
+                        QStringLiteral("prototype"));
+            QBS_ASSERT(m_jsProto.isObject(), return);
+
+            m_installer = engine->evaluate(QStringLiteral(
+                            "(function(p, n, f){ "
+                            "    Object.defineProperty(p, n, {value: f, enumerable: false});"
+                            "})"));
+            QBS_ASSERT(m_installer.isCallable(), return);
+        }
+
+        void addFunction(const QString &name, const QString &code)
+        {
+            QString file = QStringLiteral("%1.%2.js").arg(m_typeName, name);
+            QJSValue func = m_engine->QJSEngine::evaluate(code, file);
+            QBS_ASSERT(!func.isError(), return);
+            m_installer.call({m_jsProto, QJSValue(name), func});
+        }
+
+    private:
+        ScriptEngine *const m_engine;
+        QString m_typeName;
+        QJSValue m_jsProto;
+        QJSValue m_installer;
+    };
+
     JSTypeExtender arrayExtender(this, QStringLiteral("Array"));
     arrayExtender.addFunction(QStringLiteral("contains"),
         QStringLiteral("(function(e){return this.indexOf(e) !== -1;})"));
@@ -775,53 +647,370 @@ void ScriptEngine::extendJavaScriptBuiltins()
     stringExtender.addFunction(QStringLiteral("startsWith"),
         QStringLiteral("(function(e){return this.slice(0, e.length) === e;})"));
     stringExtender.addFunction(QStringLiteral("endsWith"),
-                               QStringLiteral("(function(e){return this.slice(-e.length) === e;})"));
+        QStringLiteral("(function(e){ return this.slice(-e.length) === e;})"));
+
+    // Workaround for QTBUG-90404, but this one should even be more safe
+    JSTypeExtender functionExtender(this, QStringLiteral("Function"));
+    functionExtender.addFunction(QStringLiteral("call"),
+    QStringLiteral(R"QBS((function(context, ...args) {
+                           const fn = Symbol();
+                           if (!context)
+                             context = {};
+                           try {
+                             context[fn] = this;
+                             return context[fn](...args);
+                            } catch(e) {
+                               // Turn primitive types into complex ones 1 -> Number
+                              context = new context.constructor(context);
+                              context[fn] = this;
+                              return context[fn](...args);
+                           }
+                         }))QBS"));
 }
 
-void ScriptEngine::installFunction(const QString &name, int length, QScriptValue *functionValue,
-        FunctionSignature f, QScriptValue *targetObject = nullptr)
+QJSValue ScriptEngine::newProxyObject(QObject *handler)
 {
-    if (!functionValue->isValid())
-        *functionValue = newFunction(f, length);
-    (targetObject ? *targetObject : globalObject()).setProperty(name, *functionValue);
+    return newProxyObject(newObject(), handler);
 }
 
-void ScriptEngine::installQbsFunction(const QString &name, int length, FunctionSignature f)
+QJSValue ScriptEngine::newProxyObject(const QJSValue &target, QObject *handler)
 {
-    QScriptValue functionValue;
-    installFunction(name, length, &functionValue, f, &m_qbsObject);
+    return newProxyObject(target, newQObject(handler));
 }
 
-void ScriptEngine::installConsoleFunction(const QString &name,
-        QScriptValue (*f)(QScriptContext *, QScriptEngine *, Logger *))
+QJSValue ScriptEngine::newProxyObject(const QJSValue &target, const QJSValue &handler)
 {
-    m_consoleObject.setProperty(name, newFunction(f, &m_logger));
+    if (m_vtablePatcher)
+        m_vtablePatcher->setPatchEnabled(false);
+    QJSValue proxy = m_proxyFactory.call(QJSValueList{ target, handler });
+    QBS_ASSERT(!proxy.isError(),  qFatal("%s", qPrintable(proxy.toString())));
+    if (m_vtablePatcher)
+        m_vtablePatcher->setPatchEnabled(true);
+    return proxy;
 }
 
-static QString loadFileString() { return QStringLiteral("loadFile"); }
-static QString loadExtensionString() { return QStringLiteral("loadExtension"); }
-static QString requireString() { return QStringLiteral("require"); }
-
-void ScriptEngine::installImportFunctions()
+void ScriptEngine::defineProperty(QJSValue &object, const QString &name, const QJSValue &handler)
 {
-    installFunction(loadFileString(), 1, &m_loadFileFunction, js_loadFile);
-    installFunction(loadExtensionString(), 1, &m_loadExtensionFunction, js_loadExtension);
-    installFunction(requireString(), 1, &m_requireFunction, js_require);
+    m_definePropertyFunction.call(QJSValueList{object, name, handler});
 }
 
-void ScriptEngine::uninstallImportFunctions()
+ScriptEngine *ScriptEngine::create(Logger &logger, EvalContext evalContext, QObject *parent)
 {
-    globalObject().setProperty(loadFileString(), QScriptValue());
-    globalObject().setProperty(loadExtensionString(), QScriptValue());
-    globalObject().setProperty(requireString(), QScriptValue());
+    std::lock_guard<std::mutex> lock(m_creationDestructionMutex);
+    return new ScriptEngine(logger, evalContext, parent);
 }
 
-ScriptEngine::PropertyCacheKey::PropertyCacheKey(QString moduleName,
-        QString propertyName, PropertyMapConstPtr propertyMap)
-    : m_moduleName(std::move(moduleName))
-    , m_propertyName(std::move(propertyName))
-    , m_propertyMap(std::move(propertyMap))
+QJSValueList ScriptEngine::argumentList(const QStringList &argumentNames,
+                                           const QJSValue &context)
 {
+    QJSValueList result;
+    for (const auto &name : argumentNames)
+        result += context.property(name);
+    return result;
+}
+
+ErrorInfo ScriptEngine::toErrorInfo(const QJSValue &errorValue)
+{
+    const QString fileName =
+            QUrl(errorValue.property(QStringLiteral("fileName")).toString()).path();
+    int lineNumber = errorValue.property(QStringLiteral("lineNumber")).toInt();
+    const QString message = errorValue.property(QStringLiteral("message")).toString();
+    CodeLocation errorLocation(fileName, lineNumber, 0, false);
+    return ErrorInfo(message, errorLocation);
+}
+
+bool ScriptEngine::hasError() const
+{
+    return handle()->hasException;
+}
+
+QJSValue ScriptEngine::catchError()
+{
+    if (handle()->hasException) {
+        QJSValue result;
+        QJSValuePrivate::setValue(&result, handle(), handle()->catchException());
+        return result;
+    } else {
+        return QJSValue();
+    }
+}
+
+// TODO: Remove, not needed anymore
+CodeLocation ScriptEngine::callerLocation(int index) const
+{
+    QV4::ExecutionEngine* executionEngine = this->handle();
+    Q_ASSERT(executionEngine != nullptr);
+
+    QV4::StackTrace trace = executionEngine->stackTrace(index+1);
+    QV4::StackFrame& frame = trace.last();
+
+    CodeLocation result(QUrl(frame.source).toLocalFile(), frame.line, frame.column);
+    return result;
+}
+
+// Rewrite of QJSValue::call(). We need to catch normal throw statements and treat them
+// as errors.
+QJSValue ScriptEngine::call(QJSValue *value, const QJSValueList &args)
+{
+    using namespace QV4;
+    QV4::Value *val = QJSValuePrivate::getValue(value);
+    if (!val)
+        return QJSValue();
+
+    auto *f = val->as<FunctionObject>();
+    if (!f)
+        return QJSValue();
+
+    ExecutionEngine *engine = QJSValuePrivate::engine(value);
+    Q_ASSERT(engine);
+
+    Scope scope(engine);
+    JSCallData jsCallData(scope, args.length());
+    *jsCallData->thisObject = engine->globalObject;
+    for (int i = 0; i < args.size(); ++i) {
+        if (!QJSValuePrivate::checkEngine(engine, args.at(i))) {
+            qWarning("QJSValue::call() failed: cannot call function with argument created in a different engine");
+            return QJSValue();
+        }
+        jsCallData->args[i] = QJSValuePrivate::convertedToValue(engine, args.at(i));
+    }
+
+    ScopedValue result(scope, f->call(jsCallData));
+    if (engine->hasException) {
+        QQmlError error = engine->catchExceptionAsQmlError();
+        if (error.description().isEmpty())
+            error.setDescription(QLatin1String("Exception occurred during function evaluation"));
+        QJSValue ev = newErrorObject(QJSValue::GenericError, error.description());
+        ev.setProperty(QStringLiteral("fileName"), error.url().toLocalFile());
+        ev.setProperty(QStringLiteral("lineNumber"), error.line());
+        return ev;
+    }
+    if (engine->isInterrupted.loadAcquire())
+        result = engine->newErrorObject(QStringLiteral("Interrupted"));
+
+    return QJSValue(engine, result->asReturnedValue());
+}
+
+// Converts thrown non-error values to errors.
+// Fixes the location in case the exception was thrown inside an eval() expression.
+static void convertExceptionToError(ScriptEngine *engine, QJSValue &value,
+                                    QStringList *stackTrace)
+{
+    if (!stackTrace || stackTrace->isEmpty())
+        return;
+
+    QString frame = stackTrace->takeFirst();
+    // Discard eval() stack frames in favor of the first real file location
+    // instead (where eval() is called).
+    if (frame.contains(QStringLiteral("eval code")))
+        frame = stackTrace->takeFirst();
+
+    QRegularExpression reg(
+                QStringLiteral(":(?<line>\\d+):(?<column>-?\\d+):(?<url>file://.*)"));
+    const auto match = reg.match(frame);
+    QBS_CHECK(match.hasMatch());
+    const QString fileName = QUrl(match.captured(QStringLiteral("url"))).toLocalFile();
+    const int lineNumber = match.captured(QStringLiteral("line")).toInt();
+    const QString message = value.property(QStringLiteral("message")).toString();
+
+    if (!value.isError())
+        value = engine->newErrorObject(QJSValue::GenericError, message);
+    value.setProperty(QStringLiteral("fileName"), fileName);
+    value.setProperty(QStringLiteral("lineNumber"), lineNumber);
+}
+
+QJSValue ScriptEngine::evaluate2(const QString &program, const QString &fileName, int lineNumber,
+                                    int columnNumber)
+{
+    static const QString proxyName = QStringLiteral("__scopeProxi");
+    static const QString prefix = QStringLiteral("with(") + proxyName + QStringLiteral("){");
+    static const QString suffix = QStringLiteral("}");
+    const QString script = prefix + program + suffix;
+    QStringList exceptionStackTrace;
+
+    QJSValue proxy = newProxyObject(m_globalObject, new DefaultProxyHandler());
+    Q_ASSERT(!proxy.isError());
+    Q_ASSERT(!proxy.isUndefined());
+
+    this->QJSEngine::globalObject().setProperty(proxyName, proxy);
+    QJSValue result = evaluate(script, fileName, lineNumber, columnNumber, &exceptionStackTrace);
+    this->QJSEngine::globalObject().setProperty(proxyName, QJSValue());
+
+    convertExceptionToError(this, result, &exceptionStackTrace);
+    return result;
+}
+
+QJSValue ScriptEngine::evaluate(const QJSValue &scope, const QString &program,
+                                   const QString &fileName, int lineNumber, int columnNumber,
+                                   QStringList *exceptionStackTrace)
+{
+    static const QString proxyName = QStringLiteral("__scopeProxy");
+    static const QString prefix = QStringLiteral("with(") + proxyName + QStringLiteral("){");
+    static const QString suffix = QStringLiteral("}");
+    const QString script = prefix + program + suffix;
+
+    this->QJSEngine::globalObject().setProperty(proxyName, scope);
+    QJSValue result = evaluate(script, fileName, lineNumber, columnNumber, exceptionStackTrace);
+    this->QJSEngine::globalObject().setProperty(proxyName, QJSValue());
+
+    convertExceptionToError(this, result, exceptionStackTrace);
+    return result;
+}
+
+static QUrl urlForFileName(const QString &fileName)
+{
+    if (!fileName.startsWith(QLatin1Char(':')))
+        return QUrl::fromLocalFile(fileName);
+
+    QUrl url;
+    url.setPath(fileName.mid(1));
+    url.setScheme(QLatin1String("qrc"));
+    return url;
+}
+
+CodeLocation ScriptEngine::extractFunctionLocation(const QJSValue &value)
+{
+    QBS_CHECK(value.isCallable());
+    QQmlSourceLocation location =
+            QJSValuePrivate::getValue(&value)->as<QV4::FunctionObject>()->sourceLocation();
+
+    // Evaluation prefixes the script with 'with(__scopeProxy){'
+    static const int prefixLength = 19;
+    const QString filePath = QUrl(location.sourceFile).toLocalFile();
+    const int line = location.line;
+    const int column = (location.line != 0) ? location.column - 1
+                                      : location.column - 1 - prefixLength;
+
+    return CodeLocation(filePath, line, column);
+}
+
+// Work-around for QTBUG-54925
+// Stolen from https://codereview.qt-project.org/c/qt/qtdeclarative/+/312028
+QJSValue ScriptEngine::evaluate(const QString &program, const QString &fileName, int lineNumber,
+                                   int columnNumber, QStringList *exceptionStackTrace)
+{
+    QV4::ExecutionEngine *v4 = handle();
+    QV4::Scope scope(v4);
+    QV4::ScopedValue result(scope);
+
+    QV4::Script script(v4->rootContext(), QV4::Compiler::ContextType::Global, program, urlForFileName(fileName).toString(), lineNumber, columnNumber);
+    script.strictMode = false;
+    if (v4->currentStackFrame)
+        script.strictMode = v4->currentStackFrame->v4Function->isStrict();
+    else if (v4->globalCode)
+        script.strictMode = v4->globalCode->isStrict();
+    script.inheritContext = true;
+    script.parse();
+    if (!scope.engine->hasException)
+        result = script.run();
+    if (exceptionStackTrace)
+        exceptionStackTrace->clear();
+    if (scope.engine->hasException) {
+        QV4::StackTrace trace;
+        result = v4->catchException(&trace);
+        if (exceptionStackTrace) {
+            for (auto &&frame: trace) {
+                exceptionStackTrace->push_back(QString::fromLatin1("%1:%2:%3:%4").arg(
+                                          frame.function,
+                                          QString::number(frame.line),
+                                          QString::number(frame.column),
+                                          frame.source)
+                                      );
+            }
+        }
+    }
+    if (v4->isInterrupted.loadAcquire())
+        result = v4->newErrorObject(QStringLiteral("Interrupted"));
+
+    return QJSValue(v4, result->asReturnedValue());
+}
+
+// Work-around for QTBUG-46122
+QString ScriptEngine::extractFunctionSourceCode(const CodeLocation &location)
+{
+    const int line = location.line();
+    const int column = location.column();
+    QFile file(location.filePath());
+    QBS_ASSERT(file.exists(), qWarning() << "File does not exist: " << file.fileName());
+    QBS_CHECK(file.open(QIODevice::ReadOnly));
+    QTextStream input(&file);
+
+    // Seek the begin of the function
+    for (int i = 1; i < line; ++i)
+        input.readLine();
+    input.read(column);
+    // Seek the end of the function
+    // Technically we would need to parse the function to find the end.
+    // But for simplicity we just count { and } and hope that curly braces
+    // are always used in pairs.
+    QString extractedSourceCode;
+    QTextStream output(&extractedSourceCode);
+    std::stack<QChar> stack;
+    QChar c;
+    while (!input.atEnd()) {
+        input >> c;
+        output << c;
+        if (c == QLatin1Char('{')) {
+            stack.push(QLatin1Char('}'));
+        } else if (c == QLatin1Char('}')) {
+            if (c == stack.top())
+                stack.pop();
+            else
+                throw ErrorInfo(QStringLiteral("blabla"));
+        } else {
+            continue;
+        }
+        if (stack.empty())
+            break;
+    }
+
+    return extractedSourceCode;
+}
+
+QString ScriptEngine::extractFunctionSourceCode(const QJSValue &value,
+                                                   QString originalSourceCode,
+                                                   const CodeLocation &location,
+                                                   int prefixLength)
+{
+    QBS_CHECK(value.isCallable());
+
+    QQmlSourceLocation observedLocation =
+            QJSValuePrivate::getValue(&value)->as<QV4::FunctionObject>()->sourceLocation();
+    int line = observedLocation.line - location.line();
+    // Column matters only if the errors happen on the first line
+    int column = (line != 0) ? observedLocation.column - 1
+                             : observedLocation.column - 1 - prefixLength;
+
+    QTextStream input(&originalSourceCode);
+    // Seek the begin of the function
+    for (int i = 0; i < line; ++i)
+        input.readLine();
+    input.read(column);
+    // Seek the end of the function
+    // Technically we would need to parse the function to find the end.
+    // But for simplicity we just count { and } and hope that curly braces
+    // are not used elsewhere.
+    QString extractedSourceCode;
+    QTextStream output(&extractedSourceCode);
+    std::stack<QChar> stack;
+    QChar c;
+    while (!input.atEnd()) {
+        input >> c;
+        output << c;
+        if (c == QLatin1Char('{')) {
+            stack.push(QLatin1Char('}'));
+        } else if (c == QLatin1Char('}')) {
+            if (c == stack.top())
+                stack.pop();
+            else
+                throw ErrorInfo(QStringLiteral("blabla"));
+        } else {
+            continue;
+        }
+        if (stack.empty())
+            break;
+    }
+    return extractedSourceCode;
 }
 
 } // namespace Internal

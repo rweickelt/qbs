@@ -9,7 +9,6 @@ HEADERS += \
     $$PWD/deprecationinfo.h \
     $$PWD/evaluationdata.h \
     $$PWD/evaluator.h \
-    $$PWD/evaluatorscriptclass.h \
     $$PWD/filecontext.h \
     $$PWD/filecontextbase.h \
     $$PWD/filetags.h \
@@ -48,7 +47,6 @@ SOURCES += \
     $$PWD/asttools.cpp \
     $$PWD/builtindeclarations.cpp \
     $$PWD/evaluator.cpp \
-    $$PWD/evaluatorscriptclass.cpp \
     $$PWD/filecontext.cpp \
     $$PWD/filecontextbase.cpp \
     $$PWD/filetags.cpp \

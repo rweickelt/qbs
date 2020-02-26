@@ -189,6 +189,7 @@ void TestLanguage::initTestCase()
 void TestLanguage::cleanupTestCase()
 {
     delete loader;
+    delete m_engine;
 }
 
 void TestLanguage::additionalProductTypes()
@@ -670,7 +671,7 @@ void TestLanguage::evalErrorInNonPresentModule_data()
     QTest::addColumn<QString>("errorMessage");
 
     QTest::newRow("module required")
-            << true << "broken.qbs:4:5 Element at index 0 of list property 'broken' "
+            << true << "broken.qbs:11 Error: Element at index 0 of list property 'broken' "
                        "does not have string type";
     QTest::newRow("module not required") << false << QString();
 }
@@ -805,11 +806,11 @@ void TestLanguage::erroneousFiles_data()
     QTest::newRow("importloop1")
             << "Loop detected when importing";
     QTest::newRow("nonexistentouter")
-            << "Can't find variable: outer";
+            << "ReferenceError: outer is not defined";
     QTest::newRow("invalid_file")
             << "does not exist";
     QTest::newRow("invalid-parameter-rhs")
-            << "ReferenceError: Can't find variable: access";
+            << "ReferenceError: access is not defined";
     QTest::newRow("invalid-parameter-type")
             << "Value assigned to property 'stringParameter' does not have type 'string'.";
     QTest::newRow("invalid_property_type")
@@ -829,9 +830,9 @@ void TestLanguage::erroneousFiles_data()
     QTest::newRow("dependency_cycle4")
             << "Cyclic dependencies detected.";
     QTest::newRow("references_cycle")
-            << "Cycle detected while referencing file 'references_cycle.qbs'.";
+            << "Cycle detected while referencing file '.*references_cycle.qbs'.";
     QTest::newRow("subproject_cycle")
-            << "Cycle detected while loading subproject file 'subproject_cycle.qbs'.";
+            << "Cycle detected while loading subproject file '.*subproject_cycle.qbs'.";
     QTest::newRow("invalid_stringlist_element")
             << "Element at index 1 of list property 'files' does not have string type.";
     QTest::newRow("undefined_stringlist_element")
@@ -873,9 +874,10 @@ void TestLanguage::erroneousFiles_data()
                "but this is qbs version " QBS_VERSION ".";
     QTest::newRow("wrongQbsVersionFormat")
             << "The value '.*' of Project.minimumQbsVersion is not a valid version string.";
+    // TODO: This error message comes from QtScript/QJSEngine. There is nothing we can do about it.
     QTest::newRow("properties-item-with-invalid-condition")
-            << "properties-item-with-invalid-condition.qbs:4:19.*TypeError: Result of expression "
-               "'cpp.nonexistingproperty'";
+            << "properties-item-with-invalid-condition.qbs:4.*TypeError: Cannot call method "
+               "'contains' of undefined";
     QTest::newRow("misused-inherited-property") << "Binding to non-item property";
     QTest::newRow("undeclared_property_in_Properties_item") << "Item 'blubb' is not declared";
     QTest::newRow("same-module-prefix1") << "The name of module 'prefix1' is equal to the first "
@@ -889,7 +891,7 @@ void TestLanguage::erroneousFiles_data()
     QTest::newRow("missing-colon")
             << "Invalid item 'cpp.dynamicLibraries'. Did you mean to set a module property?";
     QTest::newRow("syntax-error-in-probe")
-            << "syntax-error-in-probe.qbs:4:20.*ReferenceError";
+            << "syntax-error-in-probe.qbs:7.*ReferenceError";
     QTest::newRow("wrong-toplevel-item")
             << "wrong-toplevel-item.qbs:1:1.*The top-level item must be of type 'Project' or "
                "'Product', but it is of type 'Artifact'.";
@@ -1605,7 +1607,7 @@ void TestLanguage::itemPrototype()
     Evaluator evaluator(m_engine);
     QCOMPARE(evaluator.property(proto, "x").toVariant().toInt(), 1);
     QCOMPARE(evaluator.property(proto, "y").toVariant().toInt(), 1);
-    QVERIFY(!evaluator.property(proto, "z").isValid());
+    QVERIFY(evaluator.property(proto, "z").isUndefined());
     QCOMPARE(evaluator.property(item, "x").toVariant().toInt(), 1);
     QCOMPARE(evaluator.property(item, "y").toVariant().toInt(), 2);
     QCOMPARE(evaluator.property(item, "z").toVariant().toInt(), 2);
@@ -1629,7 +1631,7 @@ void TestLanguage::itemScope()
     Evaluator evaluator(m_engine);
     QCOMPARE(evaluator.property(scope1, "x").toVariant().toInt(), 1);
     QCOMPARE(evaluator.property(scope2, "y").toVariant().toInt(), 2);
-    QVERIFY(!evaluator.property(scope2, "x").isValid());
+    QVERIFY(evaluator.property(scope2, "x").isUndefined());
     QCOMPARE(evaluator.property(item, "z").toVariant().toInt(), 3);
 }
 
@@ -1640,10 +1642,9 @@ void TestLanguage::jsExtensions()
     QTextStream ts(&file);
     QString code = ts.readAll();
     QVERIFY(!code.isEmpty());
-    QScriptValue evaluated = m_engine->evaluate(code, file.fileName(), 1);
-    if (m_engine->hasErrorOrException(evaluated)) {
-        qDebug() << m_engine->uncaughtExceptionBacktrace();
-        QFAIL(qPrintable(m_engine->lastErrorString(evaluated)));
+    QJSValue result = m_engine->evaluate(code, file.fileName(), 1);
+    if (result.isError()) {
+        QFAIL(qPrintable(result.toString()));
     }
 }
 

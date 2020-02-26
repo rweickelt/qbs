@@ -37,61 +37,61 @@
 **
 ****************************************************************************/
 
-#include "preparescriptobserver.h"
+//#include "preparescriptobserver.h"
 
-#include "property.h"
-#include "scriptengine.h"
+//#include "property.h"
+//#include "scriptengine.h"
 
-#include <buildgraph/artifact.h>
-#include <language/language.h>
-#include <tools/scripttools.h>
-#include <tools/stlutils.h>
-#include <tools/stringconstants.h>
+//#include <buildgraph/artifact.h>
+//#include <language/language.h>
+//#include <tools/scripttools.h>
+//#include <tools/stlutils.h>
+//#include <tools/stringconstants.h>
 
-#include <QtScript/qscriptvalue.h>
+//#include <QtScript/qscriptvalue.h>
 
-namespace qbs {
-namespace Internal {
+//namespace qbs {
+//namespace Internal {
 
-PrepareScriptObserver::PrepareScriptObserver(ScriptEngine *engine, UnobserveMode unobserveMode)
-    : ScriptPropertyObserver(engine, unobserveMode)
-{
-}
+//PrepareScriptObserver::PrepareScriptObserver(ScriptEngine *engine, UnobserveMode unobserveMode)
+//    : ScriptPropertyObserver(engine, unobserveMode)
+//{
+//}
 
-void PrepareScriptObserver::onPropertyRead(const QScriptValue &object, const QString &name,
-                                           const QScriptValue &value)
-{
-    const auto objectId = object.objectId();
-    const auto projectIt = m_projectObjectIds.find(objectId);
-    if (projectIt != m_projectObjectIds.cend()) {
-        engine()->addPropertyRequestedInScript(
-                    Property(projectIt->second, QString(), name, value.toVariant(),
-                             Property::PropertyInProject));
-        return;
-    }
-    if (m_importIds.contains(objectId)) {
-        engine()->addImportRequestedInScript(object.objectId());
-        return;
-    }
-    const auto exportsIt = m_exportsObjectIds.find(value.objectId());
-    if (exportsIt != m_exportsObjectIds.cend()) {
-        engine()->addRequestedExport(exportsIt->second);
-        return;
-    }
-    const auto it = m_parameterObjects.find(objectId);
-    if (it != m_parameterObjects.cend()) {
-        engine()->addPropertyRequestedInScript(
-                    Property(it->second.first, it->second.second, name, value.toVariant(),
-                             Property::PropertyInParameters));
-    }
-    if (name == StringConstants::fileTagsProperty() && m_artifactIds.contains(objectId)) {
-        const Artifact * const artifact = attachedPointer<Artifact>(object);
-        QBS_CHECK(artifact);
-        const Property p(artifact->product->uniqueName(), QString(), name, value.toVariant(),
-                         Property::PropertyInArtifact);
-        engine()->addPropertyRequestedFromArtifact(artifact, p);
-    }
-}
+//void PrepareScriptObserver::onPropertyRead(const QScriptValue &object, const QString &name,
+//                                           const QScriptValue &value)
+//{
+//    const auto objectId = object.objectId();
+//    const auto projectIt = m_projectObjectIds.find(objectId);
+//    if (projectIt != m_projectObjectIds.cend()) {
+//        engine()->addPropertyRequestedInScript(
+//                    Property(projectIt->second, QString(), name, value.toVariant(),
+//                             Property::PropertyInProject));
+//        return;
+//    }
+//    if (m_importIds.contains(objectId)) {
+//        engine()->addImportRequestedInScript(object.objectId());
+//        return;
+//    }
+//    const auto exportsIt = m_exportsObjectIds.find(value.objectId());
+//    if (exportsIt != m_exportsObjectIds.cend()) {
+//        engine()->addRequestedExport(exportsIt->second);
+//        return;
+//    }
+//    const auto it = m_parameterObjects.find(objectId);
+//    if (it != m_parameterObjects.cend()) {
+//        engine()->addPropertyRequestedInScript(
+//                    Property(it->second.first, it->second.second, name, value.toVariant(),
+//                             Property::PropertyInParameters));
+//    }
+//    if (name == StringConstants::fileTagsProperty() && m_artifactIds.contains(objectId)) {
+//        const Artifact * const artifact = attachedPointer<Artifact>(object);
+//        QBS_CHECK(artifact);
+//        const Property p(artifact->product->uniqueName(), QString(), name, value.toVariant(),
+//                         Property::PropertyInArtifact);
+//        engine()->addPropertyRequestedFromArtifact(artifact, p);
+//    }
+//}
 
-} // namespace Internal
-} // namespace qbs
+//} // namespace Internal
+//} // namespace qbs

@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2018 The Qt Company Ltd.
+** Copyright (C) 2020 Richard Weickelt
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qbs.
@@ -37,10 +37,60 @@
 **
 ****************************************************************************/
 
-#ifndef QBS_QTSCRIPTGLOBAL_H
-#define QBS_QTSCRIPTGLOBAL_H
+#include "jsextensions.h"
 
-#define Q_SCRIPT_EXPORT
-#define Q_SCRIPTTOOLS_EXPORT
+#include <language/scriptengine.h>
+#include <QtCore/qlogging.h>
+#include <QtCore/qobject.h>
+#include <QtQml/qjsvalue.h>
 
-#endif // include guard
+namespace qbs {
+namespace Internal {
+
+class ConsoleJsExtension : public JsExtension
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE void debug(const QString &value);
+    Q_INVOKABLE void error(const QString &value);
+    Q_INVOKABLE void info(const QString &value);
+    Q_INVOKABLE void log(const QString &value);
+    Q_INVOKABLE void warn(const QString &value);
+};
+
+void ConsoleJsExtension::debug(const QString &value)
+{
+    engine()->logger().qbsDebug() << value;
+}
+
+void ConsoleJsExtension::error(const QString &value)
+{
+    engine()->logger().qbsLog(LoggerError) << value;
+}
+
+void ConsoleJsExtension::info(const QString &value)
+{
+    engine()->logger().qbsInfo() << value;
+}
+
+void ConsoleJsExtension::log(const QString &value)
+{
+    engine()->logger().qbsDebug() << value;
+}
+
+void ConsoleJsExtension::warn(const QString &value)
+{
+    engine()->logger().qbsWarning() << value;
+}
+
+QJSValue createConsoleJsExtension(QJSEngine *engine)
+{
+    return engine->newQObject(new ConsoleJsExtension());
+}
+
+QBS_REGISTER_JS_EXTENSION("console", createConsoleJsExtension)
+
+}
+}
+
+#include "consoleextension.moc"

@@ -49,7 +49,7 @@
 #include <QtCore/qflags.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qstring.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 #include <unordered_map>
 
@@ -85,7 +85,7 @@ public:
     Q_DECLARE_FLAGS(InputsSources, InputsSourceFlag)
 
 private:
-    void doApply(const ArtifactSet &inputArtifacts, QScriptValue &prepareScriptContext);
+    void doApply(const ArtifactSet &inputArtifacts, QJSValue &prepareScriptContext);
     ArtifactSet collectOldOutputArtifacts(const ArtifactSet &inputArtifacts) const;
 
     struct OutputArtifactInfo {
@@ -100,13 +100,13 @@ private:
     OutputArtifactInfo createOutputArtifact(const QString &filePath, const FileTags &fileTags,
             bool alwaysUpdated, const ArtifactSet &inputArtifacts);
     QList<Artifact *> runOutputArtifactsScript(const ArtifactSet &inputArtifacts,
-            const QScriptValueList &args);
-    Artifact *createOutputArtifactFromScriptValue(const QScriptValue &obj,
+            const QJSValueList &args);
+    Artifact *createOutputArtifactFromScriptValue(const QJSValue &obj,
             const ArtifactSet &inputArtifacts);
     QString resolveOutPath(const QString &path) const;
     const RulesEvaluationContextPtr &evalContext() const;
     ScriptEngine *engine() const;
-    QScriptValue scope() const;
+    QJSValue scope() const;
 
     static ArtifactSet collectAdditionalInputs(const FileTags &tags,
                                                const Rule *rule, const ResolvedProduct *product,

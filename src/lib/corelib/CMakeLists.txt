@@ -110,7 +110,6 @@ set(BUILD_GRAPH_SOURCES
     rulesapplicator.h
     rulesevaluationcontext.cpp
     rulesevaluationcontext.h
-    scriptclasspropertyiterator.h
     timestampsupdater.cpp
     timestampsupdater.h
     transformer.cpp
@@ -151,9 +150,11 @@ list_transform_prepend(GENERATORS_SOURCES generators/)
 set(GENERATORS_HEADERS generators/generator.h generators/generatordata.h)
 
 set(JS_EXTENSIONS_SOURCES
+    consoleextension.cpp
     environmentextension.cpp
     file.cpp
     fileinfoextension.cpp
+    importhelper.cpp
     jsextensions.cpp
     jsextensions.h
     moduleproperties.cpp
@@ -194,8 +195,6 @@ set(LANGUAGE_SOURCES
     evaluationdata.h
     evaluator.cpp
     evaluator.h
-    evaluatorscriptclass.cpp
-    evaluatorscriptclass.h
     filecontext.cpp
     filecontext.h
     filecontextbase.cpp
@@ -341,6 +340,7 @@ set(TOOLS_SOURCES
     progressobserver.cpp
     progressobserver.h
     projectgeneratormanager.cpp
+    proxyhandler.cpp
     qbsassert.cpp
     qbsassert.h
     qbspluginmanager.cpp
@@ -389,6 +389,7 @@ set(TOOLS_HEADERS
     processresult.h
     profile.h
     projectgeneratormanager.h
+    proxyhandler.h
     qbs_export.h
     settings.h
     settingsmodel.h
@@ -421,7 +422,7 @@ add_qbs_library(qbscore
         ${QBS_UNIT_TESTS_DEFINES}
         ${QBS_PROJECT_FILE_UPDATES_DEFINES}
     DEPENDS
-        Qt5::CorePrivate Qt5::Gui Qt5::Network Qt5::Script Qt5::Xml ${EXTERNAL_DEPENDS}
+        Qt5::CorePrivate Qt5::Gui Qt5::Network Qt5::Qml Qt5::QmlPrivate Qt5::Xml ${EXTERNAL_DEPENDS}
     PUBLIC_DEPENDS
         Qt5::Core
     INCLUDES

@@ -36,61 +36,61 @@
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
-#ifndef QBS_PREPARESCRIPTOBSERVER_H
-#define QBS_PREPARESCRIPTOBSERVER_H
+//#ifndef QBS_PREPARESCRIPTOBSERVER_H
+//#define QBS_PREPARESCRIPTOBSERVER_H
 
-#include "qualifiedid.h"
-#include "scriptpropertyobserver.h"
+//#include "qualifiedid.h"
+//#include "scriptpropertyobserver.h"
 
-#include <tools/set.h>
+//#include <tools/set.h>
 
-#include <QtCore/qstring.h>
+//#include <QtCore/qstring.h>
 
-#include <unordered_map>
+//#include <unordered_map>
 
-namespace qbs {
-namespace Internal {
-class ResolvedProduct;
-class ScriptEngine;
+//namespace qbs {
+//namespace Internal {
+//class ResolvedProduct;
+//class ScriptEngine;
 
-class PrepareScriptObserver : public ScriptPropertyObserver
-{
-public:
-    PrepareScriptObserver(ScriptEngine *engine, UnobserveMode unobserveMode);
+//class PrepareScriptObserver : public ScriptPropertyObserver
+//{
+//public:
+//    PrepareScriptObserver(ScriptEngine *engine, UnobserveMode unobserveMode);
 
-    void addProjectObjectId(qint64 projectId, const QString &projectName)
-    {
-        m_projectObjectIds.insert(std::make_pair(projectId, projectName));
-    }
+//    void addProjectObjectId(qint64 projectId, const QString &projectName)
+//    {
+//        m_projectObjectIds.insert(std::make_pair(projectId, projectName));
+//    }
 
-    void addExportsObjectId(qint64 exportsId, const ResolvedProduct *product)
-    {
-        m_exportsObjectIds.insert(std::make_pair(exportsId, product));
-    }
+//    void addExportsObjectId(qint64 exportsId, const ResolvedProduct *product)
+//    {
+//        m_exportsObjectIds.insert(std::make_pair(exportsId, product));
+//    }
 
-    void addArtifactId(qint64 artifactId) { m_artifactIds.insert(artifactId); }
-    bool addImportId(qint64 importId) { return m_importIds.insert(importId).second; }
-    void clearImportIds() { m_importIds.clear(); }
-    void addParameterObjectId(qint64 id, const QString &productName, const QString &depName,
-                              const QualifiedId &moduleName)
-    {
-        const QString depAndModuleName = depName + QLatin1Char(':') + moduleName.toString();
-        const auto value = std::make_pair(productName, depAndModuleName);
-        m_parameterObjects.insert(std::make_pair(id, value));
-    }
+//    void addArtifactId(qint64 artifactId) { m_artifactIds.insert(artifactId); }
+//    bool addImportId(qint64 importId) { return m_importIds.insert(importId).second; }
+//    void clearImportIds() { m_importIds.clear(); }
+//    void addParameterObjectId(qint64 id, const QString &productName, const QString &depName,
+//                              const QualifiedId &moduleName)
+//    {
+//        const QString depAndModuleName = depName + QLatin1Char(':') + moduleName.toString();
+//        const auto value = std::make_pair(productName, depAndModuleName);
+//        m_parameterObjects.insert(std::make_pair(id, value));
+//    }
 
-private:
-    void onPropertyRead(const QScriptValue &object, const QString &name,
-                        const QScriptValue &value) override;
+//private:
+//    void onPropertyRead(const QScriptValue &object, const QString &name,
+//                        const QScriptValue &value) override;
 
-    std::unordered_map<qint64, QString> m_projectObjectIds;
-    std::unordered_map<qint64, std::pair<QString, QString>> m_parameterObjects;
-    std::unordered_map<qint64, const ResolvedProduct *> m_exportsObjectIds;
-    Set<qint64> m_importIds;
-    Set<qint64> m_artifactIds;
-};
+//    std::unordered_map<qint64, QString> m_projectObjectIds;
+//    std::unordered_map<qint64, std::pair<QString, QString>> m_parameterObjects;
+//    std::unordered_map<qint64, const ResolvedProduct *> m_exportsObjectIds;
+//    Set<qint64> m_importIds;
+//    Set<qint64> m_artifactIds;
+//};
 
-} // namespace Internal
-} // namespace qbs
+//} // namespace Internal
+//} // namespace qbs
 
-#endif // Include guard.
+//#endif // Include guard.

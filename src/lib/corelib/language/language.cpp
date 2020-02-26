@@ -42,7 +42,6 @@
 #include "artifactproperties.h"
 #include "builtindeclarations.h"
 #include "propertymapinternal.h"
-#include "scriptengine.h"
 
 #include <buildgraph/artifact.h>
 #include <buildgraph/buildgraph.h>
@@ -66,8 +65,6 @@
 #include <QtCore/qdir.h>
 #include <QtCore/qdiriterator.h>
 #include <QtCore/qmap.h>
-
-#include <QtScript/qscriptvalue.h>
 
 #include <algorithm>
 #include <memory>
@@ -441,6 +438,15 @@ QString ResolvedProduct::fullDisplayName() const
 QString ResolvedProduct::profile() const
 {
     return moduleProperties->qbsPropertyValue(StringConstants::profileProperty()).toString();
+}
+
+ResolvedModuleConstPtr ResolvedProduct::module(const QString name)
+{
+    for (const auto& m: modules) {
+        if (m->name == name)
+            return m;
+    }
+    return ResolvedModuleConstPtr();
 }
 
 static QStringList findGeneratedFiles(const Artifact *base, bool recursive, const FileTags &tags)

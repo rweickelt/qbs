@@ -40,14 +40,14 @@
 #define QBS_DEPENDENCYPARAMETERSSCRIPTVALUE_H
 
 #include <QtCore/qvariant.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
 class ScriptEngine;
 
-QScriptValue dependencyParametersValue(const QString &productName, const QString &dependencyName,
-                                       const QVariantMap &parametersMap, ScriptEngine *engine);
+QJSValue dependencyParametersValue(const QString &productName, const QString &dependencyName,
+                                   const QVariantMap &parametersMap, ScriptEngine *engine);
 
 } // namespace Internal
 } // namespace qbs

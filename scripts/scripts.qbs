@@ -5,5 +5,6 @@ Product {
     files: [
         "*.bat",
         "*.sh",
+        "*.txt"
     ]
 }

@@ -244,6 +244,7 @@ void TestApi::buildGraphInfo()
     SettingsPtr s = settings();
     qbs::Internal::TemporaryProfile p("bgInfoProfile", s.get());
     p.p.setValue("qbs.targetPlatform", "xenix");
+    p.p.setValue("qbs.toolchain", "gcc");
     qbs::SetupProjectParameters setupParams
             = defaultSetupParameters("buildgraph-info");
     setupParams.setTopLevelProfile(p.p.name());

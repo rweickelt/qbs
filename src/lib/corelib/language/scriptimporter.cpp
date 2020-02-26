@@ -38,8 +38,6 @@
 ****************************************************************************/
 
 #include "scriptimporter.h"
-
-#include "evaluator.h"
 #include "scriptengine.h"
 
 #include <parser/qmljsastfwd_p.h>
@@ -47,8 +45,9 @@
 #include <parser/qmljslexer_p.h>
 #include <parser/qmljsparser_p.h>
 #include <tools/error.h>
+#include <tools/stringconstants.h>
 
-#include <QtScript/qscriptvalueiterator.h>
+#include <QtQml/qjsvalueiterator.h>
 
 namespace qbs {
 namespace Internal {
@@ -115,14 +114,13 @@ private:
     QString m_suffix;
 };
 
-
-ScriptImporter::ScriptImporter(ScriptEngine *scriptEngine)
-    : m_engine(scriptEngine)
+ScriptImporter::ScriptImporter(ScriptEngine *jsEngine)
+    : m_jsEngine(jsEngine)
 {
 }
 
-QScriptValue ScriptImporter::importSourceCode(const QString &sourceCode, const QString &filePath,
-        QScriptValue &targetObject)
+QJSValue ScriptImporter::importSourceCode(const QString &sourceCode, const QString &filePath,
+        QJSValue &targetObject)
 {
     Q_ASSERT(targetObject.isObject());
     // The targetObject doesn't get overwritten but enhanced by the contents of the .js file.
@@ -144,15 +142,17 @@ QScriptValue ScriptImporter::importSourceCode(const QString &sourceCode, const Q
         code = QLatin1String("(function(){\n") + sourceCode + extractor.suffix();
     }
 
-    QScriptValue result = m_engine->evaluate(code, filePath, 0);
-    throwOnEvaluationError(m_engine, result, [&filePath] () { return CodeLocation(filePath, 0); });
+    QJSValue result = m_jsEngine->evaluate(code, filePath, 0);
+    if (result.isError())
+        throw ScriptEngine::toErrorInfo(result);
+    Q_ASSERT(!result.isUndefined());
     copyProperties(result, targetObject);
     return result;
 }
 
-void ScriptImporter::copyProperties(const QScriptValue &src, QScriptValue &dst)
+void ScriptImporter::copyProperties(const QJSValue &src, QJSValue &dst)
 {
-    QScriptValueIterator it(src);
+    QJSValueIterator it(src);
     while (it.hasNext()) {
         it.next();
         dst.setProperty(it.name(), it.value());

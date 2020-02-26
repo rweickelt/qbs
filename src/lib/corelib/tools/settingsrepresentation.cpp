@@ -41,8 +41,8 @@
 
 #include "jsliterals.h"
 
-#include <QtScript/qscriptengine.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsengine.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 
@@ -54,8 +54,8 @@ QString settingsValueToRepresentation(const QVariant &value)
 static QVariant variantFromString(const QString &str, bool &ok)
 {
     // ### use Qt5's JSON reader at some point.
-    QScriptEngine engine;
-    QScriptValue sv = engine.evaluate(QLatin1String("(function(){return ")
+    QJSEngine engine;
+    QJSValue sv = engine.evaluate(QLatin1String("(function(){return ")
                                       + str + QLatin1String(";})()"));
     ok = !sv.isError();
     return sv.toVariant();

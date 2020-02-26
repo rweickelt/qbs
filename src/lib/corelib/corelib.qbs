@@ -3,25 +3,14 @@ import qbs.Utilities
 
 QbsLibrary {
     Depends { name: "cpp" }
-    Depends { name: "Qt"; submodules: ["core-private", "network", "xml"] }
+    Depends { name: "Qt"; submodules: ["core-private", "network", "qml", "qml-private", "xml"] }
     Depends {
         name: "Qt.core5compat";
         condition: Utilities.versionCompare(Qt.core.version, "6.0.0") >= 0
     }
-    Depends {
-        name: "Qt.script"
-        condition: !qbsbuildconfig.useBundledQtScript
-        required: false
-    }
-    Depends {
-        name: "qbsscriptengine"
-        condition: qbsbuildconfig.useBundledQtScript || !Qt.script.present
-    }
     Depends { condition: qbsbuildconfig.enableProjectFileUpdates; name: "Qt.gui" }
     name: "qbscore"
-    property stringList bundledQtScriptIncludes: qbsbuildconfig.useBundledQtScript
-            || !Qt.script.present ? qbsscriptengine.includePaths : []
-    cpp.includePaths: base.concat(bundledQtScriptIncludes).concat([
+    cpp.includePaths: base.concat([
         ".",
         "../.." // for the plugin headers
     ])
@@ -177,7 +166,6 @@ QbsLibrary {
             "rulesapplicator.h",
             "rulesevaluationcontext.cpp",
             "rulesevaluationcontext.h",
-            "scriptclasspropertyiterator.h",
             "timestampsupdater.cpp",
             "timestampsupdater.h",
             "transformer.cpp",
@@ -234,9 +222,12 @@ QbsLibrary {
         name: "jsextensions"
         prefix: name + '/'
         files: [
+            "consoleextension.cpp",
             "environmentextension.cpp",
             "file.cpp",
             "fileinfoextension.cpp",
+            "importhelper.cpp",
+            "importhelper.h",
             "jsextensions.cpp",
             "jsextensions.h",
             "moduleproperties.cpp",
@@ -270,6 +261,7 @@ QbsLibrary {
             "propertylistutils.mm",
         ]
     }
+
     Group {
         name: "language"
         prefix: name + '/'
@@ -288,8 +280,6 @@ QbsLibrary {
             "evaluationdata.h",
             "evaluator.cpp",
             "evaluator.h",
-            "evaluatorscriptclass.cpp",
-            "evaluatorscriptclass.h",
             "filecontext.cpp",
             "filecontext.h",
             "filecontextbase.cpp",
@@ -450,6 +440,8 @@ QbsLibrary {
             "progressobserver.cpp",
             "progressobserver.h",
             "projectgeneratormanager.cpp",
+            "proxyhandler.cpp",
+            "proxyhandler.h",
             "qbsassert.cpp",
             "qbsassert.h",
             "qbspluginmanager.cpp",

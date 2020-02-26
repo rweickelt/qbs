@@ -1,8 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2015 Petroules Corporation.
-** Contact: https://www.qt.io/licensing/
+** Copyright (C) 2020 Richard Weickelt
+** Contact: richard@weickelt.de
 **
 ** This file is part of Qbs.
 **
@@ -38,22 +37,74 @@
 **
 ****************************************************************************/
 
+#ifndef IMPORTHELPER_H
+#define IMPORTHELPER_H
+
 #include "jsextensions.h"
 
-#include <language/scriptengine.h>
+#include <language/filecontext.h>
 
+#include <stack>
+
+#include <QtCore/qhash.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
 #include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
 
-QJSValue createPropertyListExtension(QJSEngine *engine)
+class Evaluator;
+class ScriptImporter;
+
+class ImportHelper : public JsExtension
 {
-    QJSValue extension = engine->newObject();
-    return extension;
-}
+    Q_OBJECT
+public:
+    struct FileContextScope
+    {
+        bool initialized = false;
+        QMap<QString, QJSValue> imports;
+        QMap<QString, QJSValue> convenienceProperties;
+    };
 
-QBS_REGISTER_JS_EXTENSION("PropertyList", createPropertyListExtension)
+    ImportHelper(ScriptEngine *engine);
+    ~ImportHelper();
 
-}
-}
+    const FileContextScope *fileContextScope(const FileContextBaseConstPtr &fileCtx);
+    QString scopeNameForFilepath(const QString &filePath) const;
+
+    void setEvaluator(Evaluator *evaluator);
+    Q_INVOKABLE QJSValue requireExtension(const QString &moduleName);
+    Set<QString> importedFiles() const;
+
+    static ImportHelper *instance(ScriptEngine *engine);
+    static const ImportHelper *instance(const ScriptEngine *engine);
+
+    qint64 elapsedTime() const;
+    void setProfilingEnabled(bool enabled);
+
+private:
+    QJSValue wrapInProxy(const QJSValue &object, const QStringList &filePaths);
+
+    void importJsFile(const QString &path, QJSValue &targetObject);
+    QJSValue mergeExtensionObjects(const QJSValueList &lst);
+
+    Evaluator *m_evaluator = nullptr;
+    QHash<FileContextBaseConstPtr, FileContextScope> m_fileContextScopesMap;
+    QHash<QString, QString> m_filePathScopeNameMap;
+    QHash<QString, QJSValue> m_jsFileCache;
+    std::stack<QString> m_currentDirPathStack;
+    std::stack<QStringList> m_extensionSearchPathsStack;
+    std::stack<FileContextScope *> m_fileContextScopeStack;
+    qint64 m_elapsedTime = -1;
+    ScriptImporter *m_scriptImporter;
+
+//    Logger &m_logger;
+
+};
+
+} // namespace Internal
+} // namespace qbs
+
+#endif // Include guard.

@@ -140,7 +140,7 @@ public:
     bool hasFunctionForm() const { return m_flags.testFlag(HasFunctionForm); }
     void setHasFunctionForm(bool b);
     void setIsExclusiveListValue() { m_flags |= ExclusiveListValue; }
-    bool isExclusiveListValue() { return m_flags.testFlag(ExclusiveListValue); }
+    bool isExclusiveListValue() const { return m_flags.testFlag(ExclusiveListValue); }
     void setIsBuiltinDefaultValue() { m_flags |= BuiltinDefaultValue; }
     bool isBuiltinDefaultValue() const { return m_flags.testFlag(BuiltinDefaultValue); }
 

@@ -69,7 +69,9 @@ public:
         m_engine->setProperty(StringConstants::qbsProcEnvVarInternal(), v);
     }
 
-    ~EnvProvider() { m_engine->setProperty(StringConstants::qbsProcEnvVarInternal(), QVariant()); }
+    ~EnvProvider() {
+        m_engine->setProperty(StringConstants::qbsProcEnvVarInternal(), QVariant());
+    }
 
     QProcessEnvironment alteredEnvironment() const { return m_env; }
 
@@ -165,38 +167,39 @@ void EnvironmentScriptRunner::setupEnvironment()
             continue;
 
         RulesEvaluationContext::Scope s(m_evalContext);
-        QScriptValue envScriptContext = engine()->newObject();
+        QJSValue envScriptContext = engine()->newObject();
         envScriptContext.setPrototype(engine()->globalObject());
         setupScriptEngineForProduct(engine(), m_product, module, envScriptContext, false);
-        const QString &productKey = StringConstants::productVar();
-        const QString &projectKey = StringConstants::projectVar();
-        m_evalContext->scope().setProperty(productKey, envScriptContext.property(productKey));
-        m_evalContext->scope().setProperty(projectKey, envScriptContext.property(projectKey));
         if (m_envType == RunEnv) {
-            QScriptValue configArray = engine()->newArray(m_runEnvConfig.size());
+            QJSValue configArray = engine()->newArray(m_runEnvConfig.size());
             for (int i = 0; i < m_runEnvConfig.size(); ++i)
-                configArray.setProperty(i, QScriptValue(m_runEnvConfig.at(i)));
-            m_evalContext->scope().setProperty(QStringLiteral("config"), configArray);
+                configArray.setProperty(i, QJSValue(m_runEnvConfig.at(i)));
+            envScriptContext.setProperty(StringConstants::configVar(), configArray);
         }
         setupScriptEngineForFile(engine(), setupScript.fileContext(), m_evalContext->scope(),
                                  ObserveMode::Disabled);
         // TODO: Cache evaluate result
-        QScriptValue fun = engine()->evaluate(setupScript.sourceCode(),
-                                              setupScript.location().filePath(),
-                                              setupScript.location().line());
-        QBS_CHECK(fun.isFunction());
-        const QScriptValueList svArgs = ScriptEngine::argumentList(scriptFunctionArgs,
-                                                                   m_evalContext->scope());
-        const QScriptValue res = fun.call(QScriptValue(), svArgs);
+        QJSValue fun = engine()->evaluate2(setupScript.sourceCode(),
+                                          setupScript.location().filePath(),
+                                          setupScript.location().line(),
+                                          setupScript.location().column());
+        if (!fun.isCallable())
+            qWarning() << fun.toString();
+        QBS_CHECK(fun.isCallable());
+        const QJSValueList svArgs = ScriptEngine::argumentList(scriptFunctionArgs,
+                                                                  envScriptContext);
+        const QJSValue res = fun.call(svArgs); // TODO: Rewrite call function, handle errors
         engine()->releaseResourcesOfScriptObjects();
-        if (Q_UNLIKELY(engine()->hasErrorOrException(res))) {
+        if (Q_UNLIKELY(res.isError())) { // TODO: Does not cover thrown non-error values
+            QString fileName = QUrl(res.property(QStringLiteral("fileName")).toString()).path();
+            int lineNumber = res.property(QStringLiteral("lineNumber")).toInt();
+            QString message = res.property(QStringLiteral("message")).toString();
             const QString scriptName = m_envType == BuildEnv
                     ? StringConstants::setupBuildEnvironmentProperty()
                     : StringConstants::setupRunEnvironmentProperty();
             throw ErrorInfo(Tr::tr("Error running %1 script for product '%2': %3")
-                            .arg(scriptName, m_product->fullDisplayName(),
-                                 engine()->lastErrorString(res)),
-                            engine()->lastErrorLocation(res, setupScript.location()));
+                            .arg(scriptName, m_product->fullDisplayName(), message),
+                                 CodeLocation(fileName, lineNumber));
         }
     }
 

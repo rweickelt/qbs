@@ -36,7 +36,7 @@ if(WITH_TESTS)
 endif()
 
 find_package(Qt5
-    COMPONENTS Concurrent Core Gui Network Script Widgets Xml ${QT_TEST_COMPONENT}
+    COMPONENTS Concurrent Core Gui Network Qml Widgets Xml ${QT_TEST_COMPONENT}
     REQUIRED
     )
 

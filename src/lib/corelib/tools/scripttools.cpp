@@ -38,10 +38,9 @@
 ****************************************************************************/
 
 #include "scripttools.h"
+#include <language/scriptengine.h>
 
 #include <QtCore/qdatastream.h>
-
-#include <QtScript/qscriptengine.h>
 
 namespace qbs {
 namespace Internal {
@@ -66,16 +65,16 @@ QVariant getConfigProperty(const QVariantMap &cfg, const QStringList &name)
         return getConfigProperty(cfg.value(name.front()).toMap(), name.mid(1));
 }
 
-TemporaryGlobalObjectSetter::TemporaryGlobalObjectSetter(const QScriptValue &object)
+TemporaryGlobalObjectSetter::TemporaryGlobalObjectSetter(ScriptEngine *engine, const QJSValue &object)
 {
-    QScriptEngine *engine = object.engine();
+    m_engine = engine;
     m_oldGlobalObject = engine->globalObject();
     engine->setGlobalObject(object);
 }
 
 TemporaryGlobalObjectSetter::~TemporaryGlobalObjectSetter()
 {
-    m_oldGlobalObject.engine()->setGlobalObject(m_oldGlobalObject);
+    m_engine->setGlobalObject(m_oldGlobalObject);
 }
 
 } // namespace Internal

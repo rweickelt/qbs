@@ -41,10 +41,11 @@
 #define QBS_EVALUATIONDATA_H
 
 #include <QtCore/qhash.h>
-#include <QtCore/qvariant.h>
+#include <QtCore/qstring.h>
 
-#include <QtScript/qscriptengine.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
+
+#include <memory>
 
 namespace qbs {
 namespace Internal {
@@ -55,9 +56,9 @@ class Item;
 class EvaluationData
 {
 public:
-    Evaluator *evaluator = nullptr;
+    mutable QHash<QString, QJSValue> cache;
     const Item *item = nullptr;
-    mutable QHash<QScriptString, QScriptValue> valueCache;
+    QJSValue itemProxy;
 };
 
 } // namespace Internal

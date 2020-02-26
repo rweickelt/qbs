@@ -40,25 +40,52 @@
 #ifndef QBS_JSEXTENSIONS_H
 #define QBS_JSEXTENSIONS_H
 
-#include <QtCore/qhash.h>
-#include <QtCore/qstringlist.h>
+#include <type_traits>
 
-QT_BEGIN_NAMESPACE
-class QScriptEngine;
-class QScriptValue;
-QT_END_NAMESPACE
+#include <QtCore/qhash.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
+#include <QtQml/QJSValue>
 
 namespace qbs {
 namespace Internal {
 
+class ScriptEngine;
+
 class JsExtensions
 {
 public:
-    static void setupExtensions(const QStringList &names, const QScriptValue &scope);
-    static QScriptValue loadExtension(QScriptEngine *engine, const QString &name);
+    static void setupExtensions(const QStringList &names, ScriptEngine *engine);
+    static QJSValue loadExtension(QJSEngine *engine, const QString &name);
     static bool hasExtension(const QString &name);
     static QStringList extensionNames();
 };
+
+class JsExtension: public QObject {
+    Q_OBJECT
+
+public:
+    JsExtension(QObject *parent = nullptr): QObject(parent) {}
+
+    using InstallerFunctionPtr = std::add_pointer<QJSValue(QJSEngine *)>::type;
+
+protected:
+    ScriptEngine* engine();
+    ScriptEngine* engine() const;
+};
+
+class JsExtensionInstaller {
+public:
+    JsExtensionInstaller(const QString &name,
+                         const JsExtension::InstallerFunctionPtr installerFunction);
+private:
+};
+
+#define QBS_REGISTER_JS_EXTENSION(name, function) \
+    namespace { \
+        JsExtensionInstaller jsExtensionInstaller(QLatin1String(name), function); \
+    }
 
 } // namespace Internal
 } // namespace qbs

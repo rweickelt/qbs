@@ -39,16 +39,8 @@
 
 #include "scriptpropertyobserver.h"
 
-#include "scriptengine.h"
-
 namespace qbs {
 namespace Internal {
-
-ScriptPropertyObserver::~ScriptPropertyObserver()
-{
-    if (m_unobserveMode == UnobserveMode::Enabled)
-        m_engine->unobserveProperties();
-}
 
 } // namespace Internal
 } // namespace qbs

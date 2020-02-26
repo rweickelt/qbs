@@ -54,11 +54,14 @@
 #include <tools/error.h>
 #include <tools/qbsassert.h>
 #include <tools/qttools.h>
+#include <tools/stringconstants.h>
 
 #include <QtCore/qeventloop.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qthread.h>
 #include <QtCore/qtimer.h>
+
+#include <QtQml/QJSValueIterator>
 
 namespace qbs {
 namespace Internal {
@@ -87,11 +90,12 @@ public:
 
     void cancel(const qbs::ErrorInfo &reason)
     {
+        std::lock_guard lock(m_mutex);
+        if (m_scriptEngine)
+            m_scriptEngine->cancel();
+        m_cancelled = true;
         m_result.success = !reason.hasError();
         m_result.errorMessage = reason.toString();
-        if (m_scriptEngine)
-            m_scriptEngine->abortEvaluation();
-        m_cancelled = true;
     }
 
 signals:
@@ -100,19 +104,16 @@ signals:
 public:
     void start(const JavaScriptCommand *cmd, Transformer *transformer)
     {
-        if (m_cancelled) {
-            emit finished();
-            return;
+        std::lock_guard lock(m_mutex);
+        if (!m_cancelled) {
+            m_running = true;
+            try {
+                doStart(cmd, transformer);
+            } catch (const qbs::ErrorInfo &error) {
+                setError(error.toString(), cmd->codeLocation());
+            }
+            m_running = false;
         }
-
-        m_running = true;
-        try {
-            doStart(cmd, transformer);
-        } catch (const qbs::ErrorInfo &error) {
-            setError(error.toString(), cmd->codeLocation());
-        }
-
-        m_running = false;
         emit finished();
     }
 
@@ -121,37 +122,50 @@ private:
     {
         m_result.success = true;
         m_result.errorMessage.clear();
-        ScriptEngine * const scriptEngine = provideScriptEngine();
-        QScriptValue scope = scriptEngine->newObject();
-        scope.setPrototype(scriptEngine->globalObject());
+        ScriptEngine *scriptEngine = provideScriptEngine();
+        QJSValue scope = scriptEngine->newObject();
         m_scriptEngine->clearRequestedProperties();
         setupScriptEngineForFile(scriptEngine,
                                  transformer->rule->prepareScript.fileContext(), scope,
                                  ObserveMode::Enabled);
-
-        QScriptValue importScopeForSourceCode;
-        if (!cmd->scopeName().isEmpty())
-            importScopeForSourceCode = scope.property(cmd->scopeName());
-
-        setupScriptEngineForProduct(scriptEngine, transformer->product().get(),
-                                    transformer->rule->module.get(), scope, true);
-        transformer->setupInputs(scope);
-        transformer->setupOutputs(scope);
-        transformer->setupExplicitlyDependsOn(scope);
 
         for (QVariantMap::const_iterator it = cmd->properties().constBegin();
                 it != cmd->properties().constEnd(); ++it) {
             scope.setProperty(it.key(), scriptEngine->toScriptValue(it.value()));
         }
 
-        scriptEngine->setGlobalObject(scope);
-        if (importScopeForSourceCode.isObject())
-            scriptEngine->currentContext()->pushScope(importScopeForSourceCode);
-        scriptEngine->evaluate(cmd->sourceCode());
+        setupScriptEngineForProduct(scriptEngine, transformer->product().get(),
+                                    transformer->rule->module.get(), scope, true);
+        transformer->setupInputs(scriptEngine, scope);
+        transformer->setupOutputs(scriptEngine, scope);
+        transformer->setupExplicitlyDependsOn(scriptEngine, scope);
+
+        // If JavaScriptCommand is created inside a X.js file, all properties must
+        // be accessible without explicitly writing X.y. We use prototype lookup for
+        // simplicity. But since the ImportProxyHandler misses a lot of traps and does
+        // not inherit from Object, it must become prototype after we are done setting
+        // up the scope object.
+        QString scopeName = cmd->scopeName();
+        if (!scopeName.isEmpty()) {
+            QJSValue importScopeForSourceCode = scriptEngine->globalObject().property(scopeName);
+            scope.setPrototype(importScopeForSourceCode);
+        }
+
+        QStringList stackTrace;
+        // After unlocking the mutex the script engine might be set into interrupted state
+        // at any time by the cancellation handler. That is OK even if the actual evaluation
+        // has not started yet because in interrupted state, the engine will not even start.
+        m_mutex.unlock();
+        QJSValue result = scriptEngine->evaluate(scope, cmd->sourceCode(),
+                                                 cmd->codeLocation().filePath(),
+                                                 cmd->codeLocation().line(),
+                                                 cmd->codeLocation().column(),
+                                                 &stackTrace);
+        // Locking the mutex ensures that the cancellation handler completes if it is
+        // active.
+        m_mutex.lock();
+
         scriptEngine->releaseResourcesOfScriptObjects();
-        if (importScopeForSourceCode.isObject())
-            scriptEngine->currentContext()->popScope();
-        scriptEngine->setGlobalObject(scope.prototype());
         transformer->propertiesRequestedInCommands
                 += scriptEngine->propertiesRequestedInScript();
         unite(transformer->propertiesRequestedFromArtifactInCommands,
@@ -168,9 +182,9 @@ private:
                         std::make_pair(p->uniqueName(), p->exportedModule));
         }
         scriptEngine->clearRequestedProperties();
-        if (scriptEngine->hasUncaughtException()) {
-            // ### We don't know the line number of the command's sourceCode property assignment.
-            setError(scriptEngine->uncaughtException().toString(), cmd->codeLocation());
+        if (result.isError() && !m_cancelled) {
+            ErrorInfo error = ScriptEngine::toErrorInfo(result);
+            setError(error.items().first().description(), error.items().first().codeLocation());
         }
     }
 
@@ -193,6 +207,7 @@ private:
     JavaScriptCommandResult m_result;
     bool m_running = false;
     bool m_cancelled = false;
+    std::mutex m_mutex;
 };
 
 
@@ -259,10 +274,7 @@ bool JsCommandExecutor::doStart()
 void JsCommandExecutor::cancel(const qbs::ErrorInfo &reason)
 {
     if (m_running && (!dryRun() || command()->ignoreDryRun()))
-        QTimer::singleShot(0, m_objectInThread, [objectInThread = QPointer<JsCommandExecutorThreadObject>{m_objectInThread}, reason] {
-            if (objectInThread)
-                objectInThread->cancel(reason);
-        });
+        m_objectInThread->cancel(reason);
 }
 
 void JsCommandExecutor::onJavaScriptCommandFinished()
@@ -275,8 +287,9 @@ void JsCommandExecutor::onJavaScriptCommandFinished()
         logger().qbsDebug() << "JS code:\n" << jsCommand()->sourceCode();
         err.append(result.errorMessage);
         // ### We don't know the line number of the command's sourceCode property assignment.
-        err.appendBacktrace(QStringLiteral("JavaScriptCommand.sourceCode"));
-        err.appendBacktrace(QStringLiteral("Rule.prepare"), result.errorLocation);
+        err.appendBacktrace(QStringLiteral("JavaScriptCommand.sourceCode"), result.errorLocation);
+        err.appendBacktrace(QStringLiteral("Rule.prepare"),
+                            transformer()->rule->prepareScript.location());
     }
     emit finished(err);
 }

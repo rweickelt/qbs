@@ -48,17 +48,18 @@
 #include <language/forward_decls.h>
 #include <language/language.h>
 #include <language/property.h>
-#include <language/scriptengine.h>
 #include <tools/filetime.h>
 #include <tools/persistence.h>
 
 #include <QtCore/qhash.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
 class Artifact;
 class AbstractCommand;
 class Rule;
+class ScriptEngine;
 
 class Transformer
 {
@@ -91,15 +92,15 @@ public:
     bool commandsNeedChangeTracking = false;
     bool markedForRerun = false;
 
-    static QScriptValue translateFileConfig(ScriptEngine *scriptEngine,
-                                            const Artifact *artifact,
-                                            const QString &defaultModuleName);
+    static QJSValue translateFileConfig(ScriptEngine *scriptEngine,
+                                        const Artifact *artifact,
+                                        const QString &defaultModuleName);
     ResolvedProductPtr product() const;
-    void setupInputs(const QScriptValue &targetScriptValue);
-    void setupOutputs(QScriptValue targetScriptValue);
-    void setupExplicitlyDependsOn(QScriptValue targetScriptValue);
+    void setupInputs(ScriptEngine *engine, QJSValue &targetScriptValue);
+    void setupOutputs(ScriptEngine *engine, QJSValue &targetScriptValue);
+    void setupExplicitlyDependsOn(ScriptEngine *engine, QJSValue &targetScriptValue);
     void createCommands(ScriptEngine *engine, const PrivateScriptFunction &script,
-                        const QScriptValueList &args);
+                        const QJSValueList &args);
     void rescueChangeTrackingData(const TransformerConstPtr &other);
 
     Set<QString> jobPools() const;
@@ -124,14 +125,12 @@ public:
 
 private:
     Transformer();
-    AbstractCommandPtr createCommandFromScriptValue(const QScriptValue &scriptValue,
+    AbstractCommandPtr createCommandFromScriptValue(const QJSValue &scriptValue,
                                                     const CodeLocation &codeLocation);
 
-    static void setupInputs(QScriptValue targetScriptValue, const ArtifactSet &inputs,
-            const QString &defaultModuleName);
-    static QScriptValue translateInOutputs(ScriptEngine *scriptEngine,
-                                           const ArtifactSet &artifacts,
-                                           const QString &defaultModuleName);
+    static QJSValue translateInOutputs(ScriptEngine *scriptEngine,
+                                       const ArtifactSet &artifacts,
+                                       const QString &defaultModuleName);
 };
 
 } // namespace Internal

@@ -57,9 +57,46 @@
 #include <QtCore/qdir.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qtimer.h>
+#include <QtCore/qthread.h>
 
 namespace qbs {
 namespace Internal {
+
+class LoaderWatchdog {
+public:
+    LoaderWatchdog(ScriptEngine *engine, ProgressObserver *observer):
+        m_engine(engine), m_progressObserver(observer) {
+    }
+
+    void start() {
+        m_timer.moveToThread(&m_thread);
+        m_timer.setSingleShot(false);
+        QObject::connect(&m_timer, &QTimer::timeout, [this]() { this->check(); });
+        QObject::connect(&m_thread, &QThread::started, [this]() { m_timer.start(1000); });
+        QObject::connect(&m_thread, &QThread::finished, [this]() { m_timer.stop(); });
+        m_thread.start();
+    }
+
+    void check() {
+        if (m_progressObserver->canceled()) {
+            m_timer.stop();
+            m_engine->cancel();
+        }
+    }
+
+    ~LoaderWatchdog() {
+        if (m_thread.isRunning()) {
+            m_thread.quit();
+            m_thread.wait();
+        }
+    }
+
+private:
+    ScriptEngine *m_engine;
+    ProgressObserver *m_progressObserver;
+    QThread m_thread;
+    QTimer m_timer;
+};
 
 Loader::Loader(ScriptEngine *engine, Logger logger)
     : m_logger(std::move(logger))
@@ -131,14 +168,13 @@ TopLevelProjectPtr Loader::loadProject(const SetupProjectParameters &_parameters
                         << QDir::toNativeSeparators(parameters.projectFilePath()) << "'.";
 
     m_engine->setEnvironment(parameters.adjustedEnvironment());
-    m_engine->clearExceptions();
-    m_engine->clearImportsCache();
+//    m_engine->clearExceptions();
+//    m_engine->clearImportsCache();
     m_engine->clearRequestedProperties();
     m_engine->enableProfiling(parameters.logElapsedTime());
     m_logger.clearWarnings();
     EvalContextSwitcher evalContextSwitcher(m_engine, EvalContext::PropertyEvaluation);
-
-    QTimer cancelationTimer;
+    LoaderWatchdog watchdog(m_engine, m_progressObserver);
 
     // At this point, we cannot set a sensible total effort, because we know nothing about
     // the project yet. That's why we use a placeholder here, so the user at least
@@ -147,13 +183,7 @@ TopLevelProjectPtr Loader::loadProject(const SetupProjectParameters &_parameters
     if (m_progressObserver) {
         m_progressObserver->initialize(Tr::tr("Resolving project for configuration %1")
                 .arg(TopLevelProject::deriveId(parameters.finalBuildConfigurationTree())), 1);
-        cancelationTimer.setSingleShot(false);
-        QObject::connect(&cancelationTimer, &QTimer::timeout, [this]() {
-            QBS_ASSERT(m_progressObserver, return);
-            if (m_progressObserver->canceled())
-                m_engine->cancel();
-        });
-        cancelationTimer.start(1000);
+        watchdog.start();
     }
 
     const FileTime resolveTime = FileTime::currentTime();

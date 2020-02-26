@@ -50,8 +50,6 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qstring.h>
 
-#include <QtScript/qscriptvalue.h>
-
 #include <unordered_map>
 
 namespace qbs {
@@ -59,7 +57,6 @@ namespace Internal {
 class BuildGraphNode;
 class FileDependency;
 class FileResourceBase;
-class ScriptEngine;
 
 class QBS_AUTOTEST_EXPORT ProjectBuildData
 {
@@ -125,8 +122,6 @@ private:
                                     const std::vector<ResolvedProductPtr> &dependencies);
 
     RulesEvaluationContextPtr evalContext() const;
-    ScriptEngine *engine() const;
-    QScriptValue scope() const;
 
     TopLevelProjectPtr m_project;
     Logger m_logger;

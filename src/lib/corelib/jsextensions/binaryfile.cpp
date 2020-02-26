@@ -39,6 +39,8 @@
 **
 ****************************************************************************/
 
+#include "jsextensions.h"
+
 #include <language/scriptengine.h>
 #include <logging/translator.h>
 #include <tools/hostosinfo.h>
@@ -47,26 +49,25 @@
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qvariant.h>
-
-#include <QtScript/qscriptable.h>
-#include <QtScript/qscriptengine.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
 
-class BinaryFile : public QObject, public QScriptable, public ResourceAcquiringScriptObject
+class BinaryFile : public JsExtension, public ResourceAcquiringScriptObject
 {
     Q_OBJECT
     Q_ENUMS(OpenMode)
 public:
-    enum OpenMode {
+    enum OpenMode
+    {
         ReadOnly = 1,
         WriteOnly = 2,
         ReadWrite = ReadOnly | WriteOnly
     };
 
-    static QScriptValue ctor(QScriptContext *context, QScriptEngine *engine);
+    Q_INVOKABLE BinaryFile(QObject *engine, const QJSValue &filePath,
+                                      OpenMode mode = ReadOnly);
     ~BinaryFile() override;
 
     Q_INVOKABLE void close();
@@ -80,54 +81,19 @@ public:
     Q_INVOKABLE void write(const QVariantList &data);
 
 private:
-    explicit BinaryFile(QScriptContext *context, const QString &filePath, OpenMode mode = ReadOnly);
-
     bool checkForClosed() const;
 
     // ResourceAcquiringScriptObject implementation
     void releaseResources() override;
 
-    QFile *m_file = nullptr;
+    QFile *m_file;
 };
 
-QScriptValue BinaryFile::ctor(QScriptContext *context, QScriptEngine *engine)
+BinaryFile::BinaryFile(QObject *engine, const QJSValue &filePath,
+                                             OpenMode mode)
+    : ResourceAcquiringScriptObject(qobject_cast<ScriptEngine *>(engine))
 {
-    BinaryFile *t = nullptr;
-    switch (context->argumentCount()) {
-    case 0:
-        return context->throwError(Tr::tr("BinaryFile constructor needs "
-                                          "path of file to be opened."));
-    case 1:
-        t = new BinaryFile(context, context->argument(0).toString());
-        break;
-    case 2:
-        t = new BinaryFile(context,
-                           context->argument(0).toString(),
-                           static_cast<OpenMode>(context->argument(1).toInt32()));
-        break;
-    default:
-        return context->throwError(Tr::tr("BinaryFile constructor takes at most two parameters."));
-    }
-
-    const auto se = static_cast<ScriptEngine *>(engine);
-    se->addResourceAcquiringScriptObject(t);
-    const DubiousContextList dubiousContexts {
-        DubiousContext(EvalContext::PropertyEvaluation, DubiousContext::SuggestMoving)
-    };
-    se->checkContext(QStringLiteral("qbs.BinaryFile"), dubiousContexts);
-    se->setUsesIo();
-
-    return engine->newQObject(t, QScriptEngine::QtOwnership);
-}
-
-BinaryFile::~BinaryFile()
-{
-    delete m_file;
-}
-
-BinaryFile::BinaryFile(QScriptContext *context, const QString &filePath, OpenMode mode)
-{
-    Q_ASSERT(thisObject().engine() == engine());
+    auto *se = qobject_cast<ScriptEngine *>(engine);
 
     QIODevice::OpenMode m = QIODevice::NotOpen;
     switch (mode) {
@@ -141,18 +107,30 @@ BinaryFile::BinaryFile(QScriptContext *context, const QString &filePath, OpenMod
         m = QIODevice::WriteOnly;
         break;
     default:
-        context->throwError(Tr::tr("Unable to open file '%1': Undefined mode '%2'")
-                            .arg(filePath, mode));
+        se->throwError(Tr::tr("Unable to open file '%1': Undefined mode '%2'")
+                       .arg(filePath.toString(), mode));
         return;
     }
 
-    m_file = new QFile(filePath);
+    m_file = new QFile(filePath.toString());
     if (Q_UNLIKELY(!m_file->open(m))) {
-        context->throwError(Tr::tr("Unable to open file '%1': %2")
-                            .arg(filePath, m_file->errorString()));
+        se->throwError(Tr::tr("Unable to open file '%1': %2").arg(filePath.toString()));
         delete m_file;
         m_file = nullptr;
+        return;
     }
+
+    se->addResourceAcquiringScriptObject(this);
+    const DubiousContextList dubiousContexts({
+            DubiousContext(EvalContext::PropertyEvaluation, DubiousContext::SuggestMoving)
+    });
+    se->checkContext(QStringLiteral("qbs.BinaryFile"), dubiousContexts);
+    se->setUsesIo();
+}
+
+BinaryFile::~BinaryFile()
+{
+    delete m_file;
 }
 
 void BinaryFile::close()
@@ -190,8 +168,8 @@ void BinaryFile::resize(qint64 size)
     if (checkForClosed())
         return;
     if (Q_UNLIKELY(!m_file->resize(size))) {
-        context()->throwError(Tr::tr("Could not resize '%1': %2")
-                              .arg(m_file->fileName(), m_file->errorString()));
+        engine()->throwError(Tr::tr("Could not resize '%1': %2")
+                             .arg(m_file->fileName(), m_file->errorString()));
     }
 }
 
@@ -207,8 +185,8 @@ void BinaryFile::seek(qint64 pos)
     if (checkForClosed())
         return;
     if (Q_UNLIKELY(!m_file->seek(pos))) {
-        context()->throwError(Tr::tr("Could not seek '%1': %2")
-                              .arg(m_file->fileName(), m_file->errorString()));
+        engine()->throwError(Tr::tr("Could not seek '%1': %2")
+                             .arg(m_file->fileName(), m_file->errorString()));
     }
 }
 
@@ -218,8 +196,8 @@ QVariantList BinaryFile::read(qint64 size)
         return {};
     const QByteArray bytes = m_file->read(size);
     if (Q_UNLIKELY(bytes.size() == 0 && m_file->error() != QFile::NoError)) {
-        context()->throwError(Tr::tr("Could not read from '%1': %2")
-                              .arg(m_file->fileName(), m_file->errorString()));
+        engine()->throwError(Tr::tr("Could not read from '%1': %2")
+                             .arg(m_file->fileName(), m_file->errorString()));
     }
 
     QVariantList data;
@@ -239,8 +217,8 @@ void BinaryFile::write(const QVariantList &data)
 
     const qint64 size = m_file->write(bytes);
     if (Q_UNLIKELY(size == -1)) {
-        context()->throwError(Tr::tr("Could not write to '%1': %2")
-                              .arg(m_file->fileName(), m_file->errorString()));
+        engine()->throwError(Tr::tr("Could not write to '%1': %2")
+                             .arg(m_file->fileName(), m_file->errorString()));
     }
 }
 
@@ -248,29 +226,33 @@ bool BinaryFile::checkForClosed() const
 {
     if (m_file)
         return false;
-    if (QScriptContext *ctx = context())
-        ctx->throwError(Tr::tr("Access to BinaryFile object that was already closed."));
+    engine()->throwError(Tr::tr("Access to BinaryFile object that was already closed."));
     return true;
 }
 
 void BinaryFile::releaseResources()
 {
-    close();
-    deleteLater();
+    if (m_file)
+        close();
 }
 
-} // namespace Internal
-} // namespace qbs
-
-void initializeJsExtensionBinaryFile(QScriptValue extensionObject)
+QJSValue createBinaryFileExtension(QJSEngine *engine)
 {
-    using namespace qbs::Internal;
-    QScriptEngine *engine = extensionObject.engine();
-    const QScriptValue obj = engine->newQMetaObject(&BinaryFile::staticMetaObject,
-                                                    engine->newFunction(&BinaryFile::ctor));
-    extensionObject.setProperty(QStringLiteral("BinaryFile"), obj);
+    QJSValue mo = engine->newQMetaObject(&BinaryFile::staticMetaObject);
+    QJSValue factory = engine->evaluate(
+                QStringLiteral("(function(m, e){ return function(filepath, mode){ "
+                               "return new m(e, filepath, mode); } })"));
+    QJSValue wrapper = factory.call(QJSValueList{mo, engine->toScriptValue(engine)});
+    wrapper.setProperty(QStringLiteral("ReadOnly"), BinaryFile::ReadOnly);
+    wrapper.setProperty(QStringLiteral("WriteOnly"), BinaryFile::WriteOnly);
+    wrapper.setProperty(QStringLiteral("ReadWrite"), BinaryFile::ReadWrite);
+    return wrapper;
 }
 
-Q_DECLARE_METATYPE(qbs::Internal::BinaryFile *)
+QBS_REGISTER_JS_EXTENSION("BinaryFile", createBinaryFileExtension)
+
+}
+}
+
 
 #include "binaryfile.moc"

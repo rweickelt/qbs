@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 var ModUtils = require("qbs.ModUtils");
+var QtMocScanner = require("qbs.QtMocScanner");
 
 function args(product, input, outputs)
 {

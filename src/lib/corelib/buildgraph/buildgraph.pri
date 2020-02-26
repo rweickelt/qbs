@@ -77,7 +77,6 @@ HEADERS += \
     $$PWD/rulenode.h \
     $$PWD/rulesapplicator.h \
     $$PWD/rulesevaluationcontext.h \
-    $$PWD/scriptclasspropertyiterator.h \
     $$PWD/timestampsupdater.h \
     $$PWD/transformerchangetracking.h \
     $$PWD/transformer.h

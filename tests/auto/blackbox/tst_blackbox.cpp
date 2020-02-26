@@ -1729,6 +1729,7 @@ void TestBlackbox::clean()
 
 void TestBlackbox::concurrentExecutor()
 {
+    QSKIP("Blocking rule scripts cannot be supported.");
     QDir::setCurrent(testDataDir + "/concurrent-executor");
     QCOMPARE(runQbs(QStringList() << "-j" << "2"), 0);
     QVERIFY2(!m_qbsStderr.contains("ASSERT"), m_qbsStderr.constData());
@@ -2438,7 +2439,7 @@ void TestBlackbox::referenceErrorInExport()
     params.expectFailure = true;
     QVERIFY(runQbs(params) != 0);
     QVERIFY(m_qbsStderr.contains(
-        "referenceErrorInExport.qbs:15:12 ReferenceError: Can't find variable: includePaths"));
+        "referenceErrorInExport.qbs:15 ReferenceError: includePaths is not defined"));
 }
 
 void TestBlackbox::removeDuplicateLibraries_data()
@@ -3801,7 +3802,7 @@ void TestBlackbox::errorInfo()
     buildParams.arguments = resolveParams.arguments;
     QVERIFY(runQbs(buildParams) != 0);
     QVERIFY2(m_qbsStderr.contains("JavaScriptCommand.sourceCode"), m_qbsStderr);
-    QVERIFY2(m_qbsStderr.contains("error-info.qbs:57"), m_qbsStderr);
+    QVERIFY2(m_qbsStderr.contains("error-info.qbs:62"), m_qbsStderr);
 }
 
 void TestBlackbox::escapedLinkerFlags()
@@ -4415,9 +4416,8 @@ void TestBlackbox::invalidExtensionInstantiation()
     params.expectFailure = true;
     params.arguments << (QString("products.theProduct.extension:") + QTest::currentDataTag());
     QVERIFY(runQbs(params) != 0);
-    QVERIFY2(m_qbsStderr.contains("invalid-extension-instantiation.qbs:17")
-             && m_qbsStderr.contains('\'' + QByteArray(QTest::currentDataTag())
-                                     + "' cannot be instantiated"),
+    QVERIFY2(m_qbsStderr.contains("invalid-extension-instantiation.qbs:21")
+             && m_qbsStderr.contains("Type error"), // That's all we get: QTBUG-88559
              m_qbsStderr.constData());
 }
 

@@ -46,8 +46,8 @@
 #include "itemreader.h"
 #include "language.h"
 #include "modulemerger.h"
-#include "qualifiedid.h"
 #include "scriptengine.h"
+#include "qualifiedid.h"
 #include "value.h"
 
 #include <api/languageinfo.h>
@@ -75,10 +75,10 @@
 #include <QtCore/qdiriterator.h>
 #include <QtCore/qjsondocument.h>
 #include <QtCore/qjsonobject.h>
+#include <QtCore/qscopeguard.h>
 #include <QtCore/qtemporaryfile.h>
 #include <QtCore/qtextstream.h>
 #include <QtCore/qthreadstorage.h>
-#include <QtScript/qscriptvalueiterator.h>
 
 #include <algorithm>
 #include <memory>
@@ -836,7 +836,7 @@ ModuleLoader::MultiplexInfo ModuleLoader::extractMultiplexInfo(Item *productItem
 {
     static const QString mpmKey = QStringLiteral("multiplexMap");
 
-    const QScriptValue multiplexMap = m_evaluator->value(qbsModuleItem, mpmKey);
+    const QJSValue multiplexMap = m_evaluator->value(qbsModuleItem, mpmKey);
     const QStringList multiplexByQbsProperties = m_evaluator->stringListValue(
                 productItem, StringConstants::multiplexByQbsPropertiesProperty());
 
@@ -861,13 +861,13 @@ ModuleLoader::MultiplexInfo ModuleLoader::extractMultiplexInfo(Item *productItem
                             productItem->location());
         }
 
-        const QScriptValue arr = m_evaluator->value(qbsModuleItem, key);
+        const QJSValue arr = m_evaluator->value(qbsModuleItem, key);
         if (arr.isUndefined())
             continue;
         if (!arr.isArray())
             throw ErrorInfo(Tr::tr("Property '%1' must be an array.").arg(key));
 
-        const quint32 arrlen = arr.property(StringConstants::lengthProperty()).toUInt32();
+        const quint32 arrlen = arr.property(StringConstants::lengthProperty()).toUInt();
         if (arrlen == 0)
             continue;
 
@@ -1229,7 +1229,11 @@ void ModuleLoader::prepareProduct(ProjectContext *projectContext, Item *productI
     ProductContext productContext;
     productContext.item = productItem;
     productContext.project = projectContext;
-    productContext.name = m_evaluator->stringValue(productItem, StringConstants::nameProperty());
+    auto evaluateNameProperty = [this, &productItem](const Item::Module &) {
+        return m_evaluator->stringValue(productItem, StringConstants::nameProperty(), QString());
+    };
+    productContext.name = callWithTemporaryBaseModule<QString>(&productContext,
+                                                               evaluateNameProperty);
     QBS_CHECK(!productContext.name.isEmpty());
     const ItemValueConstPtr qbsItemValue = productItem->itemProperty(StringConstants::qbsModule());
     if (!!qbsItemValue && qbsItemValue->item()->hasProperty(StringConstants::profileProperty())) {
@@ -1629,7 +1633,7 @@ void ModuleLoader::handleSubProject(ModuleLoader::ProjectContext *projectContext
     Item * const propertiesItem = projectItem->child(ItemType::PropertiesInSubProject);
     if (!checkItemCondition(projectItem))
         return;
-    if (propertiesItem) {
+    if (propertiesItem && propertiesItem->hasProperty(StringConstants::conditionProperty())) {
         propertiesItem->setScope(projectItem);
         if (!checkItemCondition(propertiesItem))
             return;
@@ -2001,8 +2005,7 @@ bool ModuleLoader::mergeExportItems(const ProductContext &productContext)
         for (Item * const child : exportItem->children()) {
             if (child->type() == ItemType::Parameters) {
                 adjustParametersScopes(child, child);
-                mergeParameters(pmi.defaultParameters,
-                                m_evaluator->scriptValue(child).toVariant().toMap());
+                mergeParameters(pmi.defaultParameters, m_evaluator->itemToVariantMap(child));
             } else {
                 if (child->type() == ItemType::Depends) {
                     bool productTypesIsSet;
@@ -2809,21 +2812,6 @@ static Item::PropertyMap filterItemProperties(const Item::PropertyMap &propertie
     return result;
 }
 
-static QVariantMap safeToVariant(const QScriptValue &v)
-{
-    QVariantMap result;
-    QScriptValueIterator it(v);
-    while (it.hasNext()) {
-        it.next();
-        QScriptValue u = it.value();
-        if (u.isError())
-            throw ErrorInfo(u.toString());
-        result[it.name()] = (u.isObject() && !u.isArray() && !u.isRegExp())
-                ? safeToVariant(u) : it.value().toVariant();
-    }
-    return result;
-}
-
 QVariantMap ModuleLoader::extractParameters(Item *dependsItem) const
 {
     QVariantMap result;
@@ -2834,9 +2822,8 @@ QVariantMap ModuleLoader::extractParameters(Item *dependsItem) const
 
     auto origProperties = dependsItem->properties();
     dependsItem->setProperties(itemProperties);
-    QScriptValue sv = m_evaluator->scriptValue(dependsItem);
     try {
-        result = safeToVariant(sv);
+        result = m_evaluator->itemToVariantMap(dependsItem);
     } catch (const ErrorInfo &exception) {
         auto ei = exception;
         ei.prepend(Tr::tr("Error in dependency parameter."), dependsItem->location());
@@ -3587,8 +3574,7 @@ void ModuleLoader::resolveProbe(ProductContext *productContext, Item *parent, It
     QBS_CHECK(configureScript);
     if (Q_UNLIKELY(configureScript->sourceCode() == StringConstants::undefinedValue()))
         throw ErrorInfo(Tr::tr("Probe.configure must be set."), probe->location());
-    using ProbeProperty = std::pair<QString, QScriptValue>;
-    std::vector<ProbeProperty> probeBindings;
+    QMap<QString, QJSValue> probeBindings;
     QVariantMap initialProperties;
     for (Item *obj = probe; obj; obj = obj->prototype()) {
         const Item::PropertyMap &props = obj->properties();
@@ -3596,14 +3582,13 @@ void ModuleLoader::resolveProbe(ProductContext *productContext, Item *parent, It
             const QString &name = it.key();
             if (name == StringConstants::configureProperty())
                 continue;
-            const QScriptValue value = m_evaluator->value(probe, name);
-            probeBindings << ProbeProperty(name, value);
+            const QJSValue value = m_evaluator->value(probe, name);
+            probeBindings.insert(name, value);
             if (name != StringConstants::conditionProperty())
                 initialProperties.insert(name, value.toVariant());
         }
     }
     ScriptEngine * const engine = m_evaluator->engine();
-    QScriptValue configureScope;
     const bool condition = m_evaluator->boolValue(probe, StringConstants::conditionProperty());
     const QString &sourceCode = configureScript->sourceCode().toString();
     ProbeConstPtr resolvedProbe;
@@ -3626,52 +3611,37 @@ void ModuleLoader::resolveProbe(ProductContext *productContext, Item *parent, It
         ++m_probesCachedOld;
     }
     std::vector<QString> importedFilesUsedInConfigure;
+    auto jsProperties = probeBindings;
     if (!condition) {
         qCDebug(lcModuleLoader) << "Probe disabled; skipping";
     } else if (!resolvedProbe) {
         ++m_probesRun;
         qCDebug(lcModuleLoader) << "configure script needs to run";
-        const Evaluator::FileContextScopes fileCtxScopes
-                = m_evaluator->fileContextScopes(configureScript->file());
-        engine->currentContext()->pushScope(fileCtxScopes.fileScope);
-        engine->currentContext()->pushScope(fileCtxScopes.importScope);
-        configureScope = engine->newObject();
-        for (const ProbeProperty &b : probeBindings)
-            configureScope.setProperty(b.first, b.second);
-        engine->currentContext()->pushScope(configureScope);
+
         engine->clearRequestedProperties();
-        QScriptValue sv = engine->evaluate(configureScript->sourceCodeForEvaluation());
-        engine->currentContext()->popScope();
-        engine->currentContext()->popScope();
-        engine->currentContext()->popScope();
+        m_evaluator->evaluateConfigureScript(probe, configureScript, &jsProperties);
         engine->releaseResourcesOfScriptObjects();
-        if (Q_UNLIKELY(engine->hasErrorOrException(sv)))
-            throw ErrorInfo(engine->lastErrorString(sv), configureScript->location());
         importedFilesUsedInConfigure = engine->importedFilesUsedInScript();
+
     } else {
         importedFilesUsedInConfigure = resolvedProbe->importedFilesUsed();
     }
     QVariantMap properties;
-    for (const ProbeProperty &b : probeBindings) {
+    for (auto i = jsProperties.cbegin(); i != jsProperties.cend(); ++i) {
+        const auto &key = i.key();
+        const auto &jsValue = i.value();
         QVariant newValue;
-        if (resolvedProbe) {
-            newValue = resolvedProbe->properties().value(b.first);
-        } else {
-            if (condition) {
-                QScriptValue v = configureScope.property(b.first);
-                m_evaluator->convertToPropertyType(probe->propertyDeclaration(
-                                                   b.first), probe->location(), v);
-                if (Q_UNLIKELY(engine->hasErrorOrException(v)))
-                    throw ErrorInfo(engine->lastError(v));
-                newValue = v.toVariant();
-            } else {
-                newValue = initialProperties.value(b.first);
-            }
-        }
-        if (newValue != b.second.toVariant())
-            probe->setProperty(b.first, VariantValue::create(newValue));
+        if (resolvedProbe)
+            newValue = resolvedProbe->properties().value(key);
+        else if (condition)
+            newValue = jsValue.toVariant();
+        else
+            newValue = initialProperties.value(key);
+
+        if (newValue != probeBindings.value(key).toVariant())
+            probe->setProperty(key, VariantValue::create(newValue));
         if (!resolvedProbe)
-            properties.insert(b.first, newValue);
+            properties.insert(key, newValue);
     }
     if (!resolvedProbe) {
         resolvedProbe = Probe::create(probeId, probe->location(), condition,

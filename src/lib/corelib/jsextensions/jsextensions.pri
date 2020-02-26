@@ -1,13 +1,16 @@
 QT += xml
 
 HEADERS += \
+    $$PWD/importhelper.h \
     $$PWD/moduleproperties.h \
     $$PWD/jsextensions.h
 
 SOURCES += \
+    $$PWD/consoleextension.cpp \
     $$PWD/environmentextension.cpp \
     $$PWD/file.cpp \
     $$PWD/fileinfoextension.cpp \
+    $$PWD/importhelper.cpp \
     $$PWD/temporarydir.cpp \
     $$PWD/textfile.cpp \
     $$PWD/binaryfile.cpp \

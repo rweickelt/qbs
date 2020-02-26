@@ -41,40 +41,37 @@
 #ifndef QBS_PROPERTYLIST_H
 #define QBS_PROPERTYLIST_H
 
-#include <QtCore/qglobal.h>
+#include "jsextensions.h"
+#include <language/scriptengine.h>
 
+#include <QtCore/qglobal.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qvariant.h>
 
-#include <QtScript/qscriptable.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
 
-void initializeJsExtensionPropertyList(QScriptValue extensionObject);
-
 class PropertyListPrivate;
 
-// We need to have this class in the header since CMake's automoc doesn't handle .mm files
-class PropertyList : public QObject, public QScriptable
+class PropertyList : public JsExtension
 {
     Q_OBJECT
 public:
-    static QScriptValue ctor(QScriptContext *context, QScriptEngine *engine);
-    PropertyList(QScriptContext *context);
+    Q_INVOKABLE PropertyList(QObject *engine);
     ~PropertyList() override;
     Q_INVOKABLE bool isEmpty() const;
     Q_INVOKABLE void clear();
-    Q_INVOKABLE void readFromObject(const QScriptValue &value);
+    Q_INVOKABLE void readFromObject(const QJSValue &value);
     Q_INVOKABLE void readFromString(const QString &input);
     Q_INVOKABLE void readFromFile(const QString &filePath);
     Q_INVOKABLE void readFromData(const QByteArray &data);
     Q_INVOKABLE void writeToFile(const QString &filePath, const QString &plistFormat);
-    Q_INVOKABLE QScriptValue format() const;
-    Q_INVOKABLE QScriptValue toObject() const;
-    Q_INVOKABLE QString toString(const QString &plistFormat) const;
+    Q_INVOKABLE QJSValue format() const;
+    Q_INVOKABLE QJSValue toObject() const;
+    Q_INVOKABLE QString toFormattedString(const QString &plistFormat) const;
     Q_INVOKABLE QString toXMLString() const;
     Q_INVOKABLE QString toJSON(const QString &style = QString()) const;
 private:
@@ -83,7 +80,5 @@ private:
 
 } // namespace Internal
 } // namespace qbs
-
-Q_DECLARE_METATYPE(qbs::Internal::PropertyList *)
 
 #endif // QBS_PROPERTYLIST_H

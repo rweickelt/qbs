@@ -47,16 +47,14 @@
 #include <logging/translator.h>
 #include <language/language.h>
 #include <language/propertymapinternal.h>
-#include <language/resolvedfilecontext.h>
 #include <language/scriptengine.h>
+#include <language/resolvedfilecontext.h>
 #include <jsextensions/moduleproperties.h>
 #include <plugins/scanner/scanner.h>
 #include <tools/fileinfo.h>
 #include <tools/stringconstants.h>
 
 #include <QtCore/qvariant.h>
-
-#include <QtScript/qscriptcontext.h>
 
 namespace qbs {
 namespace Internal {
@@ -229,7 +227,7 @@ QStringList UserDependencyScanner::evaluate(const Artifact *artifact,
                                     m_scanner->module.get(), m_global, true);
     }
 
-    QScriptValueList args;
+    QJSValueList args;
     args.reserve(fileToScan ? 4 : 3);
     args.push_back(m_global.property(StringConstants::projectVar()));
     args.push_back(m_global.property(StringConstants::productVar()));
@@ -238,28 +236,33 @@ QStringList UserDependencyScanner::evaluate(const Artifact *artifact,
         args.push_back(fileToScan->filePath());
 
     m_engine->setGlobalObject(m_global);
-    QScriptValue &function = script.scriptFunction;
-    if (!function.isValid() || function.engine() != m_engine) {
-        function = m_engine->evaluate(script.sourceCode());
-        if (Q_UNLIKELY(!function.isFunction()))
+    QJSValue &function = script.scriptFunction;
+//    Q_ASSERT(!function.engine() || (function.engine() == m_engine));
+    if (function.isUndefined()) {
+        function = m_engine->evaluate2(script.sourceCode());
+        if (Q_UNLIKELY(!function.isCallable()))
             throw ErrorInfo(Tr::tr("Invalid scan script."), script.location());
     }
-    QScriptValue result = function.call(QScriptValue(), args);
+    QJSValue result = function.call(args);
+
     m_engine->setGlobalObject(m_global.prototype());
     m_engine->clearRequestedProperties();
-    if (Q_UNLIKELY(m_engine->hasErrorOrException(result))) {
-        QString msg = Tr::tr("evaluating scan script: ") + m_engine->lastErrorString(result);
-        const CodeLocation loc = m_engine->lastErrorLocation(result, script.location());
-        m_engine->clearExceptions();
-        throw ErrorInfo(msg, loc);
-    }
+
+    if (result.isError())
+        throw m_engine->toErrorInfo(result);
+//    if (Q_UNLIKELY(m_engine->hasErrorOrException(result))) {
+//        QString msg = Tr::tr("evaluating scan script: ") + m_engine->lastErrorString(result);
+//        const CodeLocation loc = m_engine->lastErrorLocation(result, script.location());
+//        m_engine->clearExceptions();
+//        throw ErrorInfo(msg, loc);
+//    }
     QStringList list;
     if (result.isArray()) {
-        const int count = result.property(StringConstants::lengthProperty()).toInt32();
+        const int count = result.property(StringConstants::lengthProperty()).toInt();
         list.reserve(count);
         for (qint32 i = 0; i < count; ++i) {
-            QScriptValue item = result.property(i);
-            if (item.isValid() && !item.isUndefined())
+            QJSValue item = result.property(i);
+            if (!item.isUndefined())
                 list.push_back(item.toString());
         }
     }

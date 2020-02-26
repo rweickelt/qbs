@@ -45,17 +45,18 @@
 #include <QtCore/qstringlist.h>
 #include <QtCore/qvariant.h>
 
-#include <QtScript/qscriptengine.h>
-#include <QtScript/qscriptprogram.h>
-#include <QtScript/qscriptvalue.h>
+#include <QtQml/qjsengine.h>
+#include <QtQml/qjsvalue.h>
 
 namespace qbs {
 namespace Internal {
 
+class ScriptEngine;
+
 template <typename C>
-QScriptValue toScriptValue(QScriptEngine *scriptEngine, const C &container)
+QJSValue toScriptValue(QJSEngine *scriptEngine, const C &container)
 {
-    QScriptValue v = scriptEngine->newArray(container.size());
+    QJSValue v = scriptEngine->newArray(container.size());
     int i = 0;
     for (const typename C::value_type &item : container)
         v.setProperty(i++, scriptEngine->toScriptValue(item));
@@ -65,29 +66,15 @@ QScriptValue toScriptValue(QScriptEngine *scriptEngine, const C &container)
 void setConfigProperty(QVariantMap &cfg, const QStringList &name, const QVariant &value);
 QVariant QBS_AUTOTEST_EXPORT getConfigProperty(const QVariantMap &cfg, const QStringList &name);
 
-template <class T>
-void attachPointerTo(QScriptValue &scriptValue, T *ptr)
-{
-    QVariant v;
-    v.setValue<quintptr>(reinterpret_cast<quintptr>(ptr));
-    scriptValue.setData(scriptValue.engine()->newVariant(v));
-}
-
-template <class T>
-T *attachedPointer(const QScriptValue &scriptValue)
-{
-    const auto ptr = scriptValue.data().toVariant().value<quintptr>();
-    return reinterpret_cast<T *>(ptr);
-}
-
 class TemporaryGlobalObjectSetter
 {
 public:
-    TemporaryGlobalObjectSetter(const QScriptValue &object);
+    TemporaryGlobalObjectSetter(ScriptEngine *engine, const QJSValue &object);
     ~TemporaryGlobalObjectSetter();
 
 private:
-    QScriptValue m_oldGlobalObject;
+    ScriptEngine *m_engine;
+    QJSValue m_oldGlobalObject;
 };
 
 } // namespace Internal
