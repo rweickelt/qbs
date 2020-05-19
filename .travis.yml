@@ -25,6 +25,6 @@ stages:
   - name: Test
 
 import:
-  - source: ci/travis-macos-stages.yml
+#  - source: ci/travis-macos-stages.yml
   - source: ci/travis-linux-stages.yml
-  - source: ci/travis-windows-stages.yml
+#  - source: ci/travis-windows-stages.yml

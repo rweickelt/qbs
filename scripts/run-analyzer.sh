@@ -66,15 +66,15 @@ elif [ ! -z "$SYSCTL" ]; then  # macOS
     CPU_COUNT=`$SYSCTL -n hw.ncpu`
 fi
 
-BUILD_OPTIONS="\
-    ${QBS_BUILD_PROFILE:+profile:${QBS_BUILD_PROFILE}} \
-    modules.qbsbuildconfig.enableProjectFileUpdates:true \
-    modules.cpp.treatWarningsAsErrors:true \
-    modules.qbs.buildVariant:release \
-    project.withTests:false \
-    ${BUILD_OPTIONS} \
-    config:analyzer
-"
+#BUILD_OPTIONS="\
+#    ${QBS_BUILD_PROFILE:+profile:${QBS_BUILD_PROFILE}} \
+#    modules.qbsbuildconfig.enableProjectFileUpdates:true \
+#    modules.cpp.treatWarningsAsErrors:true \
+#    modules.qbs.buildVariant:release \
+#    project.withTests:false \
+#    ${BUILD_OPTIONS} \
+#    config:analyzer
+#"
 
 QBS_SRC_DIR=${QBS_SRC_DIR:-`pwd`}
 
@@ -86,9 +86,9 @@ fi
 set -e
 set -o pipefail
 
-qbs resolve -f "$QBS_SRC_DIR/qbs.qbs" $BUILD_OPTIONS
-qbs build -f "$QBS_SRC_DIR/qbs.qbs" $BUILD_OPTIONS
-qbs generate -g clangdb -f "$QBS_SRC_DIR/qbs.qbs" $BUILD_OPTIONS
+#qbs resolve -f "$QBS_SRC_DIR/qbs.qbs" $BUILD_OPTIONS
+#qbs build -f "$QBS_SRC_DIR/qbs.qbs" $BUILD_OPTIONS
+#qbs generate -g clangdb -f "$QBS_SRC_DIR/qbs.qbs" $BUILD_OPTIONS
 
 SCRIPT="
 import json
@@ -110,8 +110,8 @@ with open(dbFile, 'r') as f:
 with open(dbFile, 'w') as f:
     f.write(json.dumps(patched_db, indent=2))
 "
-python3 -c "${SCRIPT}" analyzer/compile_commands.json
+python3 -c "${SCRIPT}" release/compile_commands.json
 
-RUN_CLANG_TIDY+=" -p analyzer -clang-tidy-binary ${CLANG_TIDY} -j ${CPU_COUNT} -header-filter=\".*qbs.*\.h$\" -quiet"
+RUN_CLANG_TIDY+=" -p release -clang-tidy-binary ${CLANG_TIDY} -j ${CPU_COUNT} -header-filter=\".*qbs.*\.h$\" -quiet"
 ${RUN_CLANG_TIDY} 2>/dev/null | tee results.txt
 echo "$(grep -c 'warning:' results.txt) warnings in total"
