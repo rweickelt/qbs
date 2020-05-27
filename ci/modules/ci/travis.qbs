@@ -1,0 +1,3 @@
+GenericCi {
+    condition: provider === "travis"
+}
