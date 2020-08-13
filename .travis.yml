@@ -108,7 +108,7 @@ jobs:
       env:
         # Address sanitizer slows autotests down too much.
         # We would hit the maximum build time on Travis.
-        BUILD_OPTIONS="modules.qbsbuildconfig.enableAddressSanitizer:false modules.cpp.compilerWrapper:ccache modules.qbs.debugInformation:true"
+        BUILD_OPTIONS="modules.qbsbuildconfig.enableAddressSanitizer:false modules.cpp.compilerWrapper:ccache"
         QMAKE_PATH=${QT_INSTALL_DIR}/${QT_VERSION}/clang_64/bin/qmake
         PATH="${QT_INSTALL_DIR}/Qt Creator.app/Contents/MacOS:${PATH}"
         QBS_BUILD_PROFILE=qt
