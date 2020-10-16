@@ -35,23 +35,23 @@ function prepareCompiler(product, inputs, output) {
     var i;
     var args = ["/nologo"];
 
-    var platformDefines = product.moduleProperty("cli", "platformDefines");
-    var compilerDefines = product.moduleProperty("cli", "compilerDefines");
-    var defines = product.moduleProperty("cli", "defines");
-    var platformCompilerFlags = product.moduleProperty("cli", "platformCompilerFlags");
-    var compilerFlags = product.moduleProperty("cli", "compilerFlags")
-    var libraryPaths = product.moduleProperty("cli", "libraryPaths");
-    var dynamicLibraries = product.moduleProperty("cli", "dynamicLibraries");
-    var netmodules = product.moduleProperty("cli", "netmodules");
-    var warnAsError = product.moduleProperty("cli", "treatWarningsAsErrors");
-    var warningLevel = product.moduleProperty("cli", "warningLevel");
-    var debugInformation = product.moduleProperty("cli", "debugInformation");
-    var optimization = product.moduleProperty("cli", "optimization");
-    var architecture = product.moduleProperty("cli", "architecture");
+    var platformDefines = product.cli.platformDefines;
+    var compilerDefines = product.cli.compilerDefines;
+    var defines = product.cli.defines;
+    var platformCompilerFlags = product.cli.platformCompilerFlags;
+    var compilerFlags = product.cli.compilerFlags
+    var libraryPaths = product.cli.libraryPaths;
+    var dynamicLibraries = product.cli.dynamicLibraries;
+    var netmodules = product.cli.netmodules;
+    var warnAsError = product.cli.treatWarningsAsErrors;
+    var warningLevel = product.cli.warningLevel;
+    var debugInformation = product.cli.debugInformation;
+    var optimization = product.cli.optimization;
+    var architecture = product.cli.architecture;
 
-    var csharpCompilerPath = product.moduleProperty("cli", "csharpCompilerPath");
-    var vbCompilerPath = product.moduleProperty("cli", "vbCompilerPath");
-    var fsharpCompilerPath = product.moduleProperty("cli", "fsharpCompilerPath");
+    var csharpCompilerPath = product.cli.csharpCompilerPath;
+    var vbCompilerPath = product.cli.vbCompilerPath;
+    var fsharpCompilerPath = product.cli.fsharpCompilerPath;
 
     var compilers = {
         "cli.csharp": csharpCompilerPath,
@@ -59,7 +59,7 @@ function prepareCompiler(product, inputs, output) {
         "cli.fsharp": fsharpCompilerPath
     };
 
-    var pathFunction = product.moduleProperty("qbs", "hostOS").contains("windows")
+    var pathFunction = product.hostOS.contains("windows")
             ? FileInfo.toWindowsSeparators
             : function (path) { return path; };
 
@@ -142,7 +142,7 @@ function prepareCompiler(product, inputs, output) {
     for (i in dynamicLibraries) {
         args.push("/reference:"
                   + dynamicLibraries[i]
-                  + product.moduleProperty("cli", "dynamicLibrarySuffix"));
+                  + product.cli.dynamicLibrarySuffix);
     }
 
     for (i in inputs.dynamiclibrary)
@@ -151,7 +151,7 @@ function prepareCompiler(product, inputs, output) {
     // Dependent netmodules
     for (i in netmodules) {
         args.push("/addmodule:" + netmodules.map(function (f) {
-            return f + product.moduleProperty("cli", "netmoduleSuffix");
+            return f + product.cli.netmoduleSuffix;
         }).join(";"));
     }
 

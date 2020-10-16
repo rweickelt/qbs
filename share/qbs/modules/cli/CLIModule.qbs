@@ -102,17 +102,13 @@ Module {
         Artifact {
             fileTags: ["application"]
             filePath: FileInfo.joinPaths(product.destinationDirectory,
-                                         product.targetName
-                                         + product.moduleProperty(product.moduleName,
-                                                                  "executableSuffix"))
+                                         product.targetName + product.cli.executableSuffix)
         }
 
         Artifact {
             fileTags: ["debuginfo_app"]
             filePath: FileInfo.joinPaths(product.destinationDirectory,
-                                         product.targetName
-                                         + product.moduleProperty(product.moduleName,
-                                                                  "debugInfoSuffix"))
+                                         product.targetName + product.cli.debugInfoSuffix)
         }
 
         prepare: {
@@ -129,17 +125,13 @@ Module {
         Artifact {
             fileTags: ["dynamiclibrary"]
             filePath: FileInfo.joinPaths(product.destinationDirectory,
-                                         product.targetName
-                                         + product.moduleProperty(product.moduleName,
-                                                                  "dynamicLibrarySuffix"))
+                                         product.targetName + product.cli.dynamicLibrarySuffix)
         }
 
         Artifact {
             fileTags: ["debuginfo_dll"]
             filePath: FileInfo.joinPaths(product.destinationDirectory,
-                                         product.targetName
-                                         + product.moduleProperty(product.moduleName,
-                                                                  "debugInfoSuffix"))
+                                         product.targetName + product.cli.debugInfoSuffix)
         }
 
         prepare: {
@@ -156,17 +148,13 @@ Module {
         Artifact {
             fileTags: ["cli.netmodule"]
             filePath: FileInfo.joinPaths(product.destinationDirectory,
-                                         product.targetName
-                                         + product.moduleProperty(product.moduleName,
-                                                                  "netmoduleSuffix"))
+                                         product.targetName + product.cli.netmoduleSuffix)
         }
 
         Artifact {
             fileTags: ["debuginfo_netmodule"]
             filePath: FileInfo.joinPaths(product.destinationDirectory,
-                                         product.targetName
-                                         + product.moduleProperty(product.moduleName,
-                                                                  "debugInfoSuffix"))
+                                         product.targetName + product.cli.debugInfoSuffix)
         }
 
         prepare: {

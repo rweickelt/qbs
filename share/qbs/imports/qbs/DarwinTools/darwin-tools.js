@@ -264,7 +264,7 @@ function cleanPropertyList(plist) {
 function _codeSignTimestampFlags(product) {
     // If signingTimestamp is undefined, do not specify the flag at all -
     // this uses the system-specific default behavior
-    var signingTimestamp = product.moduleProperty("xcode", "signingTimestamp");
+    var signingTimestamp = product.xcode.signingTimestamp;
     if (signingTimestamp !== undefined) {
         // If signingTimestamp is an empty string, specify the flag but do
         // not specify a value - this uses a default Apple-provided server
