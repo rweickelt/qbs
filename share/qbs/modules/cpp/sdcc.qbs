@@ -85,6 +85,7 @@ CppModule {
 
     property string archiverName: "sdar" + compilerExtension
     property string archiverPath: FileInfo.joinPaths(toolchainInstallPath, archiverName)
+    property stringList archiverFlags: []
 
     runtimeLibrary: "static"
 

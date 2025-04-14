@@ -204,6 +204,7 @@ CppModule {
     compilerPath: toolchainPathPrefix + compilerName
     linkerPath: binutilsPathPrefix + linkerName
     property string archiverPath: binutilsPathPrefix + archiverName
+    property stringList archiverFlags: []
     property string nmPath: binutilsPathPrefix + nmName
     property bool _nmHasDynamicOption: nmProbe.hasDynamicOption
     property string objcopyPath: binutilsPathPrefix + objcopyName

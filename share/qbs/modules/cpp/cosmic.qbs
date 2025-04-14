@@ -84,6 +84,7 @@ CppModule {
 
     property string archiverName: "clib" + compilerExtension
     property string archiverPath: FileInfo.joinPaths(toolchainInstallPath, archiverName)
+    property stringList archiverFlags: []
 
     runtimeLibrary: "static"
 

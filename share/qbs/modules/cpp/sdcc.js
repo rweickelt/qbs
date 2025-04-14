@@ -380,7 +380,7 @@ function linkerFlags(project, product, inputs, outputs) {
 }
 
 function archiverFlags(project, product, inputs, outputs) {
-    var args = ["-rc"];
+    var args = product.cpp.archiverFlags.concat(["-rc"]);
     args.push(outputs.staticlibrary[0].filePath);
     args = args.concat(Cpp.collectLinkerObjectPaths(inputs));
     return args;

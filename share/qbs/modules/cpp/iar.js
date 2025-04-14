@@ -711,7 +711,7 @@ function linkerFlags(project, product, inputs, outputs) {
 }
 
 function archiverFlags(project, product, inputs, outputs) {
-    var args = [];
+    var args = product.cpp.archiverFlags;
 
     // Inputs.
     args = args.concat(Cpp.collectLinkerObjectPaths(inputs));

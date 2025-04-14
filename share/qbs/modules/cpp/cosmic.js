@@ -319,7 +319,7 @@ function linkerFlags(project, product, inputs, outputs) {
 }
 
 function archiverFlags(project, product, inputs, outputs) {
-    var args = ["-cl"];
+    var args = product.cpp.archiverFlags.concat(["-cl"]);
 
     // Output.
     args.push(outputs.staticlibrary[0].filePath);

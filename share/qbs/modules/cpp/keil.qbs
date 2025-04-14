@@ -83,6 +83,7 @@ CppModule {
 
     property string archiverName: toolchainDetails.archiverName + compilerExtension
     property string archiverPath: FileInfo.joinPaths(toolchainInstallPath, archiverName)
+    property stringList archiverFlags: []
 
     property string disassemblerName: toolchainDetails.disassemblerName + compilerExtension
     property string disassemblerPath: FileInfo.joinPaths(toolchainInstallPath, disassemblerName)
