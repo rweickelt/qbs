@@ -3505,6 +3505,14 @@ void TestLanguage::wildcards_data()
                 << (QStringList() << "*.h" << "*.cpp")
                 << QStringList()
                 << (QStringList() << "foo.h" << "foo.cpp" << "bar.h" << "bar.cpp");
+        QTest::newRow(QByteArray("case-sensitivity") + dataTagSuffix)
+                << useGroup
+                << (QStringList() << "foo1.s" << "bar.S")
+                << QString()
+                << QString()
+                << (QStringList() << "*.S")
+                << QStringList()
+                << (QStringList() << "bar.S");
         QTest::newRow(QByteArray("exclude 1") + dataTagSuffix)
                 << useGroup
                 << (QStringList() << "foo.h" << "foo.cpp" << "bar.h" << "bar.cpp")

@@ -799,6 +799,7 @@ void SourceWildCards::expandPatterns(Set<QString> &result, const QStringList &pa
             : QDir::Files | QDir::System
               | QDir::Dirs; // This one is needed to get symbolic links to directories
 
+    itFilters |= QDir::CaseSensitive;
     if (FileInfo::isPattern(filePattern)) {
         if (!recursive)
             dirTimeStamps.emplace_back(baseDir, FileInfo(baseDir).lastModified());
