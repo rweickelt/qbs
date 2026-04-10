@@ -105,6 +105,8 @@ public:
         const DependencyScanner *scanner,
         const PropertyMapConstPtr &moduleProperties);
 
+    void invalidateResults(const QString &scannerId);
+
     template<PersistentPool::OpType opType> void completeSerializationOp(PersistentPool &pool)
     {
         pool.serializationOp<opType>(m_rawScanData);

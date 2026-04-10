@@ -476,6 +476,13 @@ void BuildGraphLoader::trackProjectChanges()
                            childLists, rescuableArtifactData.value(changedProduct->uniqueName()));
     }
 
+    if (!m_scannersToInvalidate.empty()) {
+        m_logger.qbsInfo() << Tr::tr("Invalidating %1 dependency scanner(s).")
+                                  .arg(m_scannersToInvalidate.size());
+    }
+    for (const QString &scanner : m_scannersToInvalidate)
+        m_result.newlyResolvedProject->buildData->rawScanResults.invalidateResults(scanner);
+
     EmptyDirectoriesRemover(m_result.newlyResolvedProject.get(), m_logger)
             .removeEmptyParentDirectories(m_artifactsRemovedFromDisk);
 
@@ -766,6 +773,8 @@ bool BuildGraphLoader::checkProductForChanges(const ResolvedProductPtr &restored
         return true;
     if (!dependenciesAreEqual(restoredProduct, newlyResolvedProduct))
         return true;
+    if (checkForScannerChanges(restoredProduct, newlyResolvedProduct))
+        return true;
     return false;
 }
 
@@ -819,6 +828,42 @@ bool BuildGraphLoader::checkForPropertyChanges(const ResolvedProductPtr &restore
         m_productsWhoseArtifactsNeedUpdate << restoredProduct->uniqueName();
     }
     return false;
+}
+
+bool BuildGraphLoader::checkForScannerChanges(
+    const ResolvedProductPtr &restoredProduct, const ResolvedProductPtr &newlyResolvedProduct)
+{
+    bool changed = false;
+    for (const ResolvedScannerConstPtr &oldScanner : restoredProduct->scanners) {
+        bool found = false;
+        for (const ResolvedScannerConstPtr &newScanner : newlyResolvedProduct->scanners) {
+            if (*oldScanner == *newScanner) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            m_scannersToInvalidate.insert(
+                !oldScanner->pluginName.isEmpty() ? oldScanner->pluginName
+                                                  : oldScanner->scanScript.sourceCode());
+            changed = true;
+        }
+    }
+    if (restoredProduct->scanners.size() != newlyResolvedProduct->scanners.size())
+        changed = true;
+
+    if (changed && restoredProduct->buildData) {
+        for (Artifact * const artifact :
+             filterByType<Artifact>(restoredProduct->buildData->allNodes())) {
+            if (artifact->transformer) {
+                qCDebug(lcBuildGraph()) << "forcing transformer re-execution for output artifact"
+                                        << artifact->filePath() << "due to scanner invalidation";
+                artifact->transformer->markedForRerun = true;
+            }
+        }
+    }
+
+    return changed;
 }
 
 void BuildGraphLoader::onProductRemoved(const ResolvedProductPtr &product,

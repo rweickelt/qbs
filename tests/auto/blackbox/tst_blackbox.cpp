@@ -3304,6 +3304,104 @@ void TestBlackbox::scannerItem()
     QCOMPARE(m_qbsStdout.contains("handling file2.in"), successExpected);
 }
 
+void TestBlackbox::scannerChangeTracking()
+{
+    QDir::setCurrent(testDataDir + "/scanner-change-tracking");
+
+    // Initial run: No matching inputs, so main.cpp has no dependencies.
+    QCOMPARE(runQbs(), 0);
+    QVERIFY(m_qbsStdout.contains("compiling main.cpp"));
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep1.txt");
+    touch("dep2.txt");
+    touch("subdir/dep3.txt");
+    touch("dep4.txt");
+    touch("helper.cpp");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY(!m_qbsStdout.contains("compiling main.cpp"));
+
+    // Now fix the input tags. dep1.txt and helper.cpp should become dependencies now.
+    WAIT_FOR_NEW_TIMESTAMP();
+    REPLACE_IN_FILE("scanner-change-tracking.qbs", "inputs: 'none'", "inputs: 'cpp'");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep2.txt");
+    touch("subdir/dep3.txt");
+    touch("dep4.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
+    // Make the scanner recursive. This should discover dep4.txt.
+    WAIT_FOR_NEW_TIMESTAMP();
+    REPLACE_IN_FILE("scanner-change-tracking.qbs", "recursive: false", "recursive: true");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep2.txt");
+    touch("subdir/dep3.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
+    // Extend the search path. This should discover dep3.txt.
+    WAIT_FOR_NEW_TIMESTAMP();
+    REPLACE_IN_FILE(
+        "scanner-change-tracking.qbs",
+        "return [product.sourceDirectory]",
+        "return [product.sourceDirectory, product.sourceDirectory + '/subdir']");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep2.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
+    // Do a dummy change in the scan script. This should invalidate the scan result,
+    // but not rebuild the cpp file, because the new scan result is the same as the old one.
+    WAIT_FOR_NEW_TIMESTAMP();
+    REPLACE_IN_FILE("scanner-change-tracking.qbs", "scan: {", "scan: { ");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("Invalidating 1 dependency scanner(s)"), m_qbsStdout.constData());
+    QEXPECT_FAIL(nullptr, "Re-scanning currently implies re-building.", Continue);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
+    // Change the helper script. From the user's point of view, this should trigger
+    // re-building, because a new dependency is added there.
+    WAIT_FOR_NEW_TIMESTAMP();
+    REPLACE_IN_FILE("subdir/helper.js", "/*'dep2.txt'*/", "'dep2.txt'");
+    QCOMPARE(runQbs(), 0);
+    QEXPECT_FAIL(nullptr, "We don't currently track changes in imported files.", Continue);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
+    // Do another dummy change to the scan script and verify that the new dependency
+    // from the helper script has been discovered now.
+    WAIT_FOR_NEW_TIMESTAMP();
+    REPLACE_IN_FILE("scanner-change-tracking.qbs", "scan: {", "scan: { ");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep2.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
+    // Now disable the scanner and verify that changes to the former dependencies do not
+    // trigger a re-build anymore.
+    WAIT_FOR_NEW_TIMESTAMP();
+    REPLACE_IN_FILE("scanner-change-tracking.qbs", "condition: true", "condition: false");
+    QCOMPARE(runQbs(), 0);
+    QEXPECT_FAIL(
+        nullptr, "Conceptually, losing dependencies should not necessitate a re-build.", Continue);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep1.txt");
+    touch("dep2.txt");
+    touch("subdir/dep3.txt");
+    touch("dep4.txt");
+    touch("helper.cpp");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+}
+
 void TestBlackbox::scanResultInOtherProduct()
 {
     QDir::setCurrent(testDataDir + "/scan-result-in-other-product");

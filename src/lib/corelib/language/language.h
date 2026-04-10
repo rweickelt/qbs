@@ -516,6 +516,11 @@ public:
 private:
     ResolvedScanner() = default;
 };
+bool operator==(const ResolvedScanner &s1, const ResolvedScanner &s2);
+inline bool operator!=(const ResolvedScanner &s1, const ResolvedScanner &s2)
+{
+    return !(s1 == s2);
+}
 
 class ExportedProperty
 {

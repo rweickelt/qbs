@@ -920,6 +920,13 @@ bool ruleListsAreEqual(const std::vector<RulePtr> &l1, const std::vector<RulePtr
     return listsAreEqual(l1, l2);
 }
 
+bool operator==(const ResolvedScanner &s1, const ResolvedScanner &s2)
+{
+    return s1.inputs == s2.inputs && s1.recursive == s2.recursive
+           && s1.cacheIsPerFile == s2.cacheIsPerFile && s1.pluginName == s2.pluginName
+           && s1.searchPathsScript == s2.searchPathsScript && s1.scanScript == s2.scanScript;
+}
+
 bool operator==(const RuleArtifact &a1, const RuleArtifact &a2)
 {
     return a1.filePath == a2.filePath

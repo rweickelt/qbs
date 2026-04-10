@@ -110,6 +110,8 @@ private:
                                            const ResolvedProductPtr &newlyResolvedProduct);
     bool checkForPropertyChanges(const ResolvedProductPtr &restoredProduct,
                                  const ResolvedProductPtr &newlyResolvedProduct);
+    bool checkForScannerChanges(
+        const ResolvedProductPtr &restoredProduct, const ResolvedProductPtr &newlyResolvedProduct);
     QVariantMap propertyMapByKind(const ResolvedProductConstPtr &product, const Property &property);
     void onProductRemoved(const ResolvedProductPtr &product, ProjectBuildData *projectBuildData,
                           bool removeArtifactsFromDisk = true);
@@ -144,6 +146,7 @@ private:
     Set<QString> m_changedProjectFiles;
     Set<QString> m_removedProjectFiles;
     Set<QString> m_productsWhoseArtifactsNeedUpdate;
+    Set<QString> m_scannersToInvalidate;
     qint64 m_wildcardExpansionEffort = 0;
     qint64 m_propertyComparisonEffort = 0;
 

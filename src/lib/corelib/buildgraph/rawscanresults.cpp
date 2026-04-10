@@ -79,5 +79,17 @@ RawScanResults::ScanData &RawScanResults::findScanData(
     return findScanData(file, scanner->id(), moduleProperties, predicate);
 }
 
+void RawScanResults::invalidateResults(const QString &scannerId)
+{
+    for (auto it = m_rawScanData.begin(); it != m_rawScanData.end(); ++it) {
+        for (auto scanData = it.value().begin(); scanData != it.value().end();) {
+            if (scanData->scannerId == scannerId)
+                scanData = it.value().erase(scanData);
+            else
+                ++scanData;
+        }
+    }
+}
+
 } // namespace Internal
 } // namespace qbs
