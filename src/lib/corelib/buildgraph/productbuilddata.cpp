@@ -121,6 +121,12 @@ void ProductBuildData::addRescuableArtifactData(
     m_rescuableArtifactData[filePath] = std::move(rad);
 }
 
+void ProductBuildData::markRescuableArtifactsOutOfDate()
+{
+    for (RescuableArtifactData &rad : m_rescuableArtifactData)
+        rad.knownOutOfDate = true;
+}
+
 bool ProductBuildData::checkAndSetJsArtifactsMapUpToDateFlag()
 {
     if (!m_jsArtifactsMapUpToDate) {

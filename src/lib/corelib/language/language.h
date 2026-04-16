@@ -44,12 +44,12 @@
 #include "forward_decls.h"
 #include "jsimports.h"
 #include "moduleproviderinfo.h"
+#include "property.h"
 #include "propertydeclaration.h"
 #include "resolvedfilecontext.h"
 
 #include <buildgraph/forward_decls.h>
 #include <tools/codelocation.h>
-#include <tools/fileinfo.h>
 #include <tools/filetime.h>
 #include <tools/joblimits.h>
 #include <tools/persistence.h>
@@ -499,6 +499,8 @@ public:
     CodeLocation location;
     PrivateScriptFunction searchPathsScript;
     PrivateScriptFunction scanScript;
+    PropertySet propertiesRequested;
+    QHash<QString, PropertySet> propertiesRequestedFromArtifacts;
 
     template<PersistentPool::OpType opType> void completeSerializationOp(PersistentPool &pool)
     {
@@ -510,7 +512,9 @@ public:
             pluginName,
             location,
             searchPathsScript,
-            scanScript);
+            scanScript,
+            propertiesRequested,
+            propertiesRequestedFromArtifacts);
     }
 
 private:
@@ -652,7 +656,7 @@ public:
     JobLimits jobLimits;
     std::vector<ResolvedModulePtr> modules;
     QHash<ResolvedModuleConstPtr, QVariantMap> moduleParameters;
-    std::vector<ResolvedScannerConstPtr> scanners;
+    std::vector<ResolvedScannerPtr> scanners;
     std::vector<GroupPtr> groups;
     std::vector<ProbeConstPtr> probes;
     std::vector<ArtifactPropertiesPtr> artifactProperties;

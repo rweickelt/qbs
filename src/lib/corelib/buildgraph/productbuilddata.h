@@ -81,6 +81,7 @@ public:
     void setRescuableArtifactData(const AllRescuableArtifactData &rad);
     RescuableArtifactData removeFromRescuableArtifactData(const QString &filePath);
     void addRescuableArtifactData(const QString &filePath, RescuableArtifactData &&rad);
+    void markRescuableArtifactsOutOfDate();
 
     unsigned int buildPriority() const { return m_buildPriority; }
     void setBuildPriority(unsigned int prio) { m_buildPriority = prio; }

@@ -3355,6 +3355,9 @@ void TestBlackbox::scannerChangeTracking()
     touch("dep2.txt");
     touch("subdir/dep3.txt");
     touch("dep4.txt");
+    touch("dep5.txt");
+    touch("dep6.txt");
+    touch("dep7.txt");
     touch("helper.cpp");
     QCOMPARE(runQbs(), 0);
     QVERIFY(!m_qbsStdout.contains("compiling main.cpp"));
@@ -3368,6 +3371,9 @@ void TestBlackbox::scannerChangeTracking()
     touch("dep2.txt");
     touch("subdir/dep3.txt");
     touch("dep4.txt");
+    touch("dep5.txt");
+    touch("dep6.txt");
+    touch("dep7.txt");
     QCOMPARE(runQbs(), 0);
     QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
 
@@ -3378,7 +3384,14 @@ void TestBlackbox::scannerChangeTracking()
     QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
     WAIT_FOR_NEW_TIMESTAMP();
     touch("dep2.txt");
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep4.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
     touch("subdir/dep3.txt");
+    touch("dep5.txt");
+    touch("dep6.txt");
+    touch("dep7.txt");
     QCOMPARE(runQbs(), 0);
     QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
 
@@ -3392,6 +3405,9 @@ void TestBlackbox::scannerChangeTracking()
     QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
     WAIT_FOR_NEW_TIMESTAMP();
     touch("dep2.txt");
+    touch("dep5.txt");
+    touch("dep6.txt");
+    touch("dep7.txt");
     QCOMPARE(runQbs(), 0);
     QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
 
@@ -3423,6 +3439,49 @@ void TestBlackbox::scannerChangeTracking()
     QCOMPARE(runQbs(), 0);
     QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
 
+    // Discover dep5 via a product property. Qbs should notice that the property value
+    // was read during the previous run of the scan script and that it had a different value then.
+    QbsRunParameters params;
+    params.command = "resolve";
+    params.arguments << "products.app.discoverDep5:true";
+    QCOMPARE(runQbs(params), 0);
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep5.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep6.txt");
+    touch("dep7.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
+    // Discover dep6 via a module property.
+    params.arguments << "modules.m.discoverDep6:true";
+    QCOMPARE(runQbs(params), 0);
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep6.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep7.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
+    // Discover dep7 via a module property. The difference to the case above is that
+    // this one is read via an artifact, not via a product.
+    params.arguments << "modules.m.discoverDep7:true";
+    QCOMPARE(runQbs(params), 0);
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep7.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+
     // Now disable the scanner and verify that changes to the former dependencies do not
     // trigger a re-build anymore.
     WAIT_FOR_NEW_TIMESTAMP();
@@ -3436,8 +3495,11 @@ void TestBlackbox::scannerChangeTracking()
     touch("dep2.txt");
     touch("subdir/dep3.txt");
     touch("dep4.txt");
+    touch("dep5.txt");
+    touch("dep6.txt");
+    touch("dep7.txt");
     touch("helper.cpp");
-    QCOMPARE(runQbs(), 0);
+    QCOMPARE(runQbs(params), 0);
     QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
 }
 

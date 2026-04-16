@@ -63,7 +63,7 @@ class DependencyScanner
 {
 public:
     DependencyScanner(
-        ResolvedScannerConstPtr scanner, ScriptEngine *engine, ScannerPlugin *plugin = nullptr);
+        ResolvedScannerPtr scanner, ScriptEngine *engine, ScannerPlugin *plugin = nullptr);
 
     QString id() const;
 
@@ -82,7 +82,7 @@ private:
         const FileResourceBase *fileToScan,
         const PrivateScriptFunction &script);
 
-    ResolvedScannerConstPtr m_scanner;
+    ResolvedScannerPtr m_scanner;
     ScriptEngine *m_engine = nullptr;
     ScopedJsValue m_global;
     ResolvedProduct *m_product = nullptr;

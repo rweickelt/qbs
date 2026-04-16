@@ -48,7 +48,7 @@
 namespace qbs {
 namespace Internal {
 
-static const char QBS_PERSISTENCE_MAGIC[] = "QBSPERSISTENCE-140";
+static const char QBS_PERSISTENCE_MAGIC[] = "QBSPERSISTENCE-141";
 
 NoBuildGraphError::NoBuildGraphError(const QString &filePath)
     : ErrorInfo(Tr::tr("Build graph not found for configuration '%1'. Expected location was '%2'.")

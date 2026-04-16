@@ -1325,10 +1325,37 @@ void Executor::prepareProducts()
 {
     ProductPrioritySetter prioritySetter(m_allProducts);
     prioritySetter.apply();
+    Set<QString> scannersToInvalidate;
     for (const ResolvedProductPtr &product : std::as_const(m_buildableProducts)) {
         EnvironmentScriptRunner(product.get(), m_evalContext.get(), m_project->environment)
                 .setupForBuild();
+        bool scannersInvalidated = false;
+        for (const ResolvedScannerPtr &scanner : product->scanners) {
+            if (scannerNeedsInvalidation(
+                    scanner.get(), product.get(), m_productsByName, m_projectsByName)) {
+                scannersToInvalidate.insert(
+                    !scanner->pluginName.isEmpty() ? scanner->pluginName
+                                                   : scanner->scanScript.sourceCode());
+                scanner->propertiesRequested.clear();
+                scanner->propertiesRequestedFromArtifacts.clear();
+                scannersInvalidated = true;
+            }
+        }
+        if (scannersInvalidated) {
+            for (Artifact * const artifact :
+                 filterByType<Artifact>(product->buildData->allNodes())) {
+                if (artifact->transformer) {
+                    qCDebug(lcBuildGraph())
+                        << "forcing transformer re-execution for output artifact"
+                        << artifact->filePath() << "due to scanner invalidation";
+                    artifact->transformer->markedForRerun = true;
+                }
+            }
+            product->buildData->markRescuableArtifactsOutOfDate();
+        }
     }
+    for (const QString &scannerId : scannersToInvalidate)
+        m_project->buildData->rawScanResults.invalidateResults(scannerId);
 }
 
 void Executor::setupRootNodes()

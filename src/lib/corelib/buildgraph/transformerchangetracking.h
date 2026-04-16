@@ -47,6 +47,12 @@ bool commandsNeedRerun(Transformer *transformer,
                        const std::unordered_map<QString, const ResolvedProduct *> &productsByName,
                        const std::unordered_map<QString, const ResolvedProject *> &projectsByName);
 
+bool scannerNeedsInvalidation(
+    const ResolvedScanner *scanner,
+    const ResolvedProduct *product,
+    const std::unordered_map<QString, const ResolvedProduct *> &productsByName,
+    const std::unordered_map<QString, const ResolvedProject *> &projectsByName);
+
 } // namespace Internal
 } // namespace qbs
 

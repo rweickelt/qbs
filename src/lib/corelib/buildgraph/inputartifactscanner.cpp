@@ -223,7 +223,7 @@ Set<DependencyScanner *> InputArtifactScanner::scannersForArtifact(const Artifac
         InputArtifactScannerContext::DependencyScannerCacheItem &cache = scannerCache[fileTag];
         if (!cache) {
             QList<DependencyScannerPtr> cacheScanners;
-            for (const ResolvedScannerConstPtr &scanner : product->scanners) {
+            for (const ResolvedScannerPtr &scanner : product->scanners) {
                 if (scanner->inputs.contains(fileTag)) {
                     ScannerPlugin *plugin = nullptr;
                     if (!scanner->pluginName.isEmpty()) {

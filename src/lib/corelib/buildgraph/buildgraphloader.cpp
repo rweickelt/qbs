@@ -763,17 +763,18 @@ static bool dependenciesAreEqual(const ResolvedProductConstPtr &p1,
 bool BuildGraphLoader::checkProductForChanges(const ResolvedProductPtr &restoredProduct,
                                               const ResolvedProductPtr &newlyResolvedProduct)
 {
-    // This check must come first, as it can prevent build data rescuing as a side effect.
+    // These two checks must come first and run always, as they can have side effects.
     // TODO: Similar special checks must be done for Environment.getEnv() and File.exists() in
     // commands (or possibly it could be reasonable to just forbid such "dynamic" constructs
     // within commands).
-    if (checkForPropertyChanges(restoredProduct, newlyResolvedProduct))
+    const bool propertyChanges = checkForPropertyChanges(restoredProduct, newlyResolvedProduct);
+    const bool scannerChanges = checkForScannerChanges(restoredProduct, newlyResolvedProduct);
+    if (propertyChanges || scannerChanges)
         return true;
+
     if (!ruleListsAreEqual(restoredProduct->rules, newlyResolvedProduct->rules))
         return true;
     if (!dependenciesAreEqual(restoredProduct, newlyResolvedProduct))
-        return true;
-    if (checkForScannerChanges(restoredProduct, newlyResolvedProduct))
         return true;
     return false;
 }
@@ -834,11 +835,14 @@ bool BuildGraphLoader::checkForScannerChanges(
     const ResolvedProductPtr &restoredProduct, const ResolvedProductPtr &newlyResolvedProduct)
 {
     bool changed = false;
-    for (const ResolvedScannerConstPtr &oldScanner : restoredProduct->scanners) {
+    for (const ResolvedScannerPtr &oldScanner : restoredProduct->scanners) {
         bool found = false;
-        for (const ResolvedScannerConstPtr &newScanner : newlyResolvedProduct->scanners) {
+        for (const ResolvedScannerPtr &newScanner : newlyResolvedProduct->scanners) {
             if (*oldScanner == *newScanner) {
                 found = true;
+                newScanner->propertiesRequested = oldScanner->propertiesRequested;
+                newScanner->propertiesRequestedFromArtifacts
+                    = oldScanner->propertiesRequestedFromArtifacts;
                 break;
             }
         }

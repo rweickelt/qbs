@@ -77,7 +77,7 @@ static QStringList collectProductBuildDirectories(const ResolvedProduct *product
 }
 
 DependencyScanner::DependencyScanner(
-    ResolvedScannerConstPtr scanner, ScriptEngine *engine, ScannerPlugin *plugin)
+    ResolvedScannerPtr scanner, ScriptEngine *engine, ScannerPlugin *plugin)
     : m_scanner(std::move(scanner))
     , m_engine(engine)
     , m_global(engine->context(), JS_NewObjectProto(engine->context(), m_engine->globalObject()))
@@ -195,12 +195,17 @@ QStringList DependencyScanner::evaluate(
             m_engine->globalObject(),
             int(args.size()),
             args.data()));
+
+    m_scanner->propertiesRequested += m_engine->propertiesRequestedInScript();
+    unite(m_scanner->propertiesRequestedFromArtifacts, m_engine->propertiesRequestedFromArtifact());
     m_engine->clearRequestedProperties();
+
     if (m_engine->checkForJsError(script.location())) {
         ErrorInfo err = m_engine->getAndClearJsError();
         err.prepend(Tr::tr("Error evaluating scan script"));
         throw err;
     }
+
     QStringList list;
     if (JS_IsArray(result)) {
         const int count = getJsIntProperty(

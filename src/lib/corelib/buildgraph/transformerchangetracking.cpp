@@ -49,19 +49,23 @@ namespace Internal {
 class TrafoChangeTracker
 {
 public:
-    TrafoChangeTracker(const Transformer *transformer,
-                       const ResolvedProduct *product,
-                       const std::unordered_map<QString, const ResolvedProduct *> &productsByName,
-                       const std::unordered_map<QString, const ResolvedProject *> &projectsByName)
-        : m_transformer(transformer),
-          m_product(product),
-          m_productsByName(productsByName),
-          m_projectsByName(projectsByName)
+    TrafoChangeTracker(
+        const Transformer *transformer,
+        const ResolvedScanner *scanner,
+        const ResolvedProduct *product,
+        const std::unordered_map<QString, const ResolvedProduct *> &productsByName,
+        const std::unordered_map<QString, const ResolvedProject *> &projectsByName)
+        : m_transformer(transformer)
+        , m_scanner(scanner)
+        , m_product(product)
+        , m_productsByName(productsByName)
+        , m_projectsByName(projectsByName)
     {
     }
 
     bool prepareScriptNeedsRerun() const;
     bool commandsNeedRerun() const;
+    bool scannerNeedsInvalidation() const;
 
 private:
     QVariantMap propertyMapByKind(const Property &property) const;
@@ -77,6 +81,7 @@ private:
     const ResolvedProduct *getProduct(const QString &name) const;
 
     const Transformer * const m_transformer;
+    const ResolvedScanner * const m_scanner;
     const ResolvedProduct * const m_product;
     const std::unordered_map<QString, const ResolvedProduct *> &m_productsByName;
     const std::unordered_map<QString, const ResolvedProject *> &m_projectsByName;
@@ -352,6 +357,35 @@ bool TrafoChangeTracker::commandsNeedRerun() const
     return false;
 }
 
+bool TrafoChangeTracker::scannerNeedsInvalidation() const
+{
+    for (const Property &property : std::as_const(m_scanner->propertiesRequested)) {
+        if (checkForPropertyChange(property, propertyMapByKind(property)))
+            return true;
+    }
+
+    // TODO: imports, deps, artifacts map, exported modules? (See prepare script checker)
+
+    for (auto it = m_scanner->propertiesRequestedFromArtifacts.cbegin();
+         it != m_scanner->propertiesRequestedFromArtifacts.cend();
+         ++it) {
+        for (const Property &property : std::as_const(it.value())) {
+            const Artifact * const artifact = getArtifact(it.key(), property.productName);
+            if (!artifact)
+                return true;
+            if (property.kind == Property::PropertyInArtifact) {
+                if (sorted(artifact->fileTags().toStringList()) != property.value.toStringList())
+                    return true;
+                continue;
+            }
+            if (checkForPropertyChange(property, artifact->properties->value()))
+                return true;
+        }
+    }
+
+    return false;
+}
+
 bool prepareScriptNeedsRerun(
         Transformer *transformer, const ResolvedProduct *product,
         const std::unordered_map<QString, const ResolvedProduct *> &productsByName,
@@ -360,8 +394,8 @@ bool prepareScriptNeedsRerun(
     if (!transformer->prepareScriptNeedsChangeTracking)
         return false;
     transformer->prepareScriptNeedsChangeTracking = false;
-    return TrafoChangeTracker(transformer, product, productsByName, projectsByName)
-            .prepareScriptNeedsRerun();
+    return TrafoChangeTracker(transformer, nullptr, product, productsByName, projectsByName)
+        .prepareScriptNeedsRerun();
 }
 
 bool commandsNeedRerun(Transformer *transformer, const ResolvedProduct *product,
@@ -371,8 +405,18 @@ bool commandsNeedRerun(Transformer *transformer, const ResolvedProduct *product,
     if (!transformer->commandsNeedChangeTracking)
         return false;
     transformer->commandsNeedChangeTracking = false;
-    return TrafoChangeTracker(transformer, product, productsByName, projectsByName)
-            .commandsNeedRerun();
+    return TrafoChangeTracker(transformer, nullptr, product, productsByName, projectsByName)
+        .commandsNeedRerun();
+}
+
+bool scannerNeedsInvalidation(
+    const ResolvedScanner *scanner,
+    const ResolvedProduct *product,
+    const std::unordered_map<QString, const ResolvedProduct *> &productsByName,
+    const std::unordered_map<QString, const ResolvedProject *> &projectsByName)
+{
+    return TrafoChangeTracker(nullptr, scanner, product, productsByName, projectsByName)
+        .scannerNeedsInvalidation();
 }
 
 } // namespace Internal
