@@ -221,12 +221,28 @@ inline QVariant typedNullVariant()
 #endif
 }
 
+template<typename T>
+bool qVariantMapsOrHashesEqual(const T &m1, const T &m2);
+
+bool qVariantMapsEqual(const QVariantMap &m1, const QVariantMap &m2);
+bool qVariantHashesEqual(const QVariantHash &h1, const QVariantHash &h2);
+bool qVariantListsEqual(const QVariantList &l1, const QVariantList &l2);
+
 inline bool qVariantsEqual(const QVariant &v1, const QVariant &v2)
 {
-    return v1.isNull() == v2.isNull() && v1 == v2;
+    if (v1.isNull() != v2.isNull())
+        return false;
+    if (qVariantType(v1) == QMetaType::QVariantMap)
+        return qVariantMapsEqual(v1.toMap(), v2.toMap());
+    if (qVariantType(v1) == QMetaType::QVariantHash)
+        return qVariantHashesEqual(v1.toHash(), v2.toHash());
+    if (qVariantType(v1) == QMetaType::QVariantList)
+        return qVariantListsEqual(v1.toList(), v2.toList());
+    return v1 == v2;
 }
 
-inline bool qVariantMapsEqual(const QVariantMap &m1, const QVariantMap &m2)
+template<typename T>
+bool qVariantMapsOrHashesEqual(const T &m1, const T &m2)
 {
     if (m1.size() != m2.size())
         return false;
@@ -240,6 +256,30 @@ inline bool qVariantMapsEqual(const QVariantMap &m1, const QVariantMap &m2)
             return false;
         ++it2;
         ++it1;
+    }
+    return true;
+}
+
+inline bool qVariantMapsEqual(const QVariantMap &m1, const QVariantMap &m2)
+{
+    return qVariantMapsOrHashesEqual(m1, m2);
+}
+
+inline bool qVariantHashesEqual(const QVariantHash &h1, const QVariantHash &h2)
+{
+    return qVariantMapsOrHashesEqual(h1, h2);
+}
+
+inline bool qVariantListsEqual(const QVariantList &l1, const QVariantList &l2)
+{
+    if (l1.size() != l2.size())
+        return false;
+    if (l1.isSharedWith(l2))
+        return true;
+
+    for (qsizetype i = 0; i < l1.size(); ++i) {
+        if (!qVariantsEqual(l1.at(i), l2.at(i)))
+            return false;
     }
     return true;
 }

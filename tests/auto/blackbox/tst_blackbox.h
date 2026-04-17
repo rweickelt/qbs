@@ -308,6 +308,7 @@ private slots:
     void responseFiles();
     void retaggedOutputArtifact();
     void rpathlinkDeduplication();
+    void rttiChangeTracking();
     void ruleConditions_data();
     void ruleConditions();
     void ruleConnectionWithExcludedInputs();

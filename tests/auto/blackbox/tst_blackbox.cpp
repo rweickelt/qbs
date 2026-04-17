@@ -3093,6 +3093,45 @@ void TestBlackbox::rpathlinkDeduplication()
     QCOMPARE(m_qbsStdout.count((linkFlag + libDir).toUtf8()), 1);
 }
 
+void TestBlackbox::rttiChangeTracking()
+{
+    QDir::setCurrent(testDataDir + "/rtti-change-tracking");
+
+    // Check toolchain
+    QCOMPARE(runQbs(QbsRunParameters("resolve")), 0);
+    const bool isGcc = m_qbsStdout.contains("is gcc");
+    const bool isNotGcc = m_qbsStdout.contains("is not gcc");
+    QCOMPARE(isGcc, !isNotGcc);
+    if (isNotGcc)
+        QSKIP("Test only applies with gcc-like toolchains");
+
+    QbsRunParameters buildParams;
+    buildParams.arguments << "--command-echo-mode" << "command-line";
+
+    // Do not set rtti manually. This means "use compiler default", so the flag should not appear
+    // on the command line.
+    QCOMPARE(runQbs(buildParams), 0);
+    QVERIFY2(m_qbsStdout.contains("main.cpp"), m_qbsStdout.constData());
+    QVERIFY2(
+        !m_qbsStdout.contains("-frtti") && !m_qbsStdout.contains("-fno-rtti"),
+        m_qbsStdout.constData());
+
+    // Switch rtti off. The respective flag should appear.
+    QCOMPARE(runQbs(QbsRunParameters("resolve", QStringList{"modules.cpp.enableRtti:false"})), 0);
+    QCOMPARE(runQbs(buildParams), 0);
+    QVERIFY2(m_qbsStdout.contains("main.cpp"), m_qbsStdout.constData());
+    QVERIFY2(m_qbsStdout.contains("-fno-rtti"), m_qbsStdout.constData());
+
+    // Now build without setting the property again.
+    // The command line should be the same as on the initial run.
+    QCOMPARE(runQbs(QbsRunParameters("resolve")), 0);
+    QCOMPARE(runQbs(buildParams), 0);
+    QVERIFY2(m_qbsStdout.contains("main.cpp"), m_qbsStdout.constData());
+    QVERIFY2(
+        !m_qbsStdout.contains("-frtti") && !m_qbsStdout.contains("-fno-rtti"),
+        m_qbsStdout.constData());
+}
+
 void TestBlackbox::ruleConditions_data()
 {
     QTest::addColumn<bool>("enableGroup");
