@@ -805,11 +805,11 @@ Set<QString> ScriptEngine::imports() const
     for (auto it = m_jsImportCache.cbegin(); it != m_jsImportCache.cend(); ++it) {
         const JsImport &jsImport = it.key();
         for (const QString &filePath : jsImport.filePaths)
-            filePaths << filePath;
+            filePaths << QDir::cleanPath(filePath);
     }
     for (const auto &kv : m_filePathsPerImport) {
         for (const QString &fp : kv.second)
-            filePaths << fp;
+            filePaths << QDir::cleanPath(fp);
     }
     return filePaths;
 }

@@ -849,11 +849,12 @@ DependenciesContext::~DependenciesContext() = default;
 ItemReaderCache::AstCacheEntry &ItemReaderCache::retrieveOrSetupCacheEntry(
     const QString &filePath, const std::function<void (AstCacheEntry &)> &setup)
 {
+    const QString cleanFilePath = QDir::cleanPath(filePath);
     const auto astCacheGuard = m_astCache.lock();
-    AstCacheEntry &entry = astCacheGuard.get()[filePath];
+    AstCacheEntry &entry = astCacheGuard.get()[cleanFilePath];
     if (!entry.ast) {
         setup(entry);
-        m_filesRead << filePath;
+        m_filesRead << QDir::cleanPath(cleanFilePath);
     }
     return entry;
 }
