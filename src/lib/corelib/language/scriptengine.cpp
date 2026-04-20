@@ -42,6 +42,7 @@
 #include "deprecationinfo.h"
 #include "filecontextbase.h"
 #include "jsimports.h"
+#include "language.h"
 #include "preparescriptobserver.h"
 #include "scriptimporter.h"
 
@@ -1117,7 +1118,7 @@ JsException ScriptEngine::checkAndClearException(const CodeLocation &fallbackLoc
     return {m_context, JS_GetException(m_context), JS_GetBacktrace(m_context), fallbackLocation};
 }
 
-void ScriptEngine::clearRequestedProperties()
+void ScriptEngine::clearTrackedScriptAccesses()
 {
     m_propertiesRequestedInScript.clear();
     m_propertiesRequestedFromArtifact.clear();
@@ -1125,6 +1126,34 @@ void ScriptEngine::clearRequestedProperties()
     m_productsWithRequestedDependencies.clear();
     m_requestedArtifacts.clear();
     m_requestedExports.clear();
+}
+
+TrackedScriptAccesses ScriptEngine::getAndClearTrackedScriptAccesses()
+{
+    TrackedScriptAccesses accesses;
+    accesses.properties = m_propertiesRequestedInScript;
+    accesses.propertiesViaArtifact = m_propertiesRequestedFromArtifact;
+    accesses.importedFilesUsed = importedFilesUsedInScript();
+    accesses.dependenciesMap.set(m_productsWithRequestedDependencies);
+    accesses.artifactsMaps = m_requestedArtifacts;
+    for (const ResolvedProduct * const p : m_requestedExports)
+        accesses.exportedModules.insert(std::make_pair(p->uniqueName(), p->exportedModule));
+    clearTrackedScriptAccesses();
+    return accesses;
+}
+
+void ScriptEngine::mergeAndClearTrackedScriptAccesses(TrackedScriptAccesses &accesses)
+{
+    accesses.properties += m_propertiesRequestedInScript;
+    unite(accesses.propertiesViaArtifact, m_propertiesRequestedFromArtifact);
+    const std::vector<QString> &importFilesUsed = importedFilesUsedInScript();
+    accesses.importedFilesUsed.insert(
+        accesses.importedFilesUsed.cend(), importFilesUsed.cbegin(), importFilesUsed.cend());
+    accesses.dependenciesMap.add(m_productsWithRequestedDependencies);
+    accesses.artifactsMaps.unite(m_requestedArtifacts);
+    for (const ResolvedProduct * const p : m_requestedExports)
+        accesses.exportedModules.insert(std::make_pair(p->uniqueName(), p->exportedModule));
+    clearTrackedScriptAccesses();
 };
 
 void ScriptEngine::takeOwnership(JSValue v)

@@ -45,6 +45,8 @@
 #include "requestedartifacts.h"
 #include "requesteddependencies.h"
 #include "rulecommands.h"
+#include "trackedscriptaccesses.h"
+
 #include <language/forward_decls.h>
 #include <language/language.h>
 #include <language/property.h>
@@ -75,20 +77,10 @@ public:
     ArtifactSet explicitlyDependsOn;
     RuleConstPtr rule;
     CommandList commands;
-    PropertySet propertiesRequestedInPrepareScript;
-    PropertySet propertiesRequestedInCommands;
-    QHash<QString, PropertySet> propertiesRequestedFromArtifactInPrepareScript;
-    QHash<QString, PropertySet> propertiesRequestedFromArtifactInCommands;
-    std::vector<QString> importedFilesUsedInPrepareScript;
-    std::vector<QString> importedFilesUsedInCommands;
-    RequestedDependencies depsRequestedInPrepareScript;
-    RequestedDependencies depsRequestedInCommands;
-    RequestedArtifacts artifactsMapRequestedInPrepareScript;
-    RequestedArtifacts artifactsMapRequestedInCommands;
+    TrackedScriptAccesses trackedAccessesFromPrepareScript;
+    TrackedScriptAccesses trackedAccessesFromCommands;
     FileTime lastPrepareScriptExecutionTime;
     FileTime lastCommandExecutionTime;
-    std::unordered_map<QString, ExportedModule> exportedModulesAccessedInPrepareScript;
-    std::unordered_map<QString, ExportedModule> exportedModulesAccessedInCommands;
     bool alwaysRun;
     bool prepareScriptNeedsChangeTracking = false;
     bool commandsNeedChangeTracking = false;
@@ -110,20 +102,20 @@ public:
 
     template<PersistentPool::OpType opType> void completeSerializationOp(PersistentPool &pool)
     {
-        pool.serializationOp<opType>(rule, inputs, outputs, explicitlyDependsOn,
-                                     propertiesRequestedInPrepareScript,
-                                     propertiesRequestedInCommands,
-                                     propertiesRequestedFromArtifactInPrepareScript,
-                                     propertiesRequestedFromArtifactInCommands,
-                                     importedFilesUsedInPrepareScript, importedFilesUsedInCommands,
-                                     depsRequestedInPrepareScript, depsRequestedInCommands,
-                                     commands, artifactsMapRequestedInPrepareScript,
-                                     artifactsMapRequestedInCommands,
-                                     lastPrepareScriptExecutionTime, lastCommandExecutionTime,
-                                     exportedModulesAccessedInPrepareScript,
-                                     exportedModulesAccessedInCommands,
-                                     alwaysRun, prepareScriptNeedsChangeTracking,
-                                     commandsNeedChangeTracking, markedForRerun);
+        pool.serializationOp<opType>(
+            rule,
+            inputs,
+            outputs,
+            explicitlyDependsOn,
+            trackedAccessesFromPrepareScript,
+            trackedAccessesFromCommands,
+            commands,
+            lastPrepareScriptExecutionTime,
+            lastCommandExecutionTime,
+            alwaysRun,
+            prepareScriptNeedsChangeTracking,
+            commandsNeedChangeTracking,
+            markedForRerun);
     }
 
 private:

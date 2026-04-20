@@ -114,6 +114,7 @@ set(BUILD_GRAPH_SOURCES
     rulesevaluationcontext.h
     timestampsupdater.cpp
     timestampsupdater.h
+    trackedscriptaccesses.h
     transformer.cpp
     transformer.h
     transformerchangetracking.cpp

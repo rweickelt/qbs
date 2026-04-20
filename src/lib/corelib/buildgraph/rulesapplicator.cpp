@@ -193,7 +193,7 @@ void RulesApplicator::doApply(const ArtifactSet &inputArtifacts, JSValue prepare
     context.transformer->explicitlyDependsOn = m_explicitlyDependsOn;
     context.transformer->alwaysRun = m_rule->alwaysRun;
 
-    engine()->clearRequestedProperties();
+    engine()->clearTrackedScriptAccesses();
 
     // create the output artifacts from the set of input artifacts
     context.transformer->setupInputs(engine(), prepareScriptContext);

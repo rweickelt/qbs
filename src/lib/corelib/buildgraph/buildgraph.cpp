@@ -889,8 +889,8 @@ static void doSanityChecksForProduct(const ResolvedProductConstPtr &product,
         QBS_CHECK(transformer->inputs.size() <= transformerOutputChildren.size());
         for (Artifact * const transformerInput : std::as_const(transformer->inputs))
             QBS_CHECK(transformerOutputChildren.contains(transformerInput));
-        transformer->artifactsMapRequestedInPrepareScript.doSanityChecks();
-        transformer->artifactsMapRequestedInCommands.doSanityChecks();
+        transformer->trackedAccessesFromPrepareScript.artifactsMaps.doSanityChecks();
+        transformer->trackedAccessesFromCommands.artifactsMaps.doSanityChecks();
     }
 }
 

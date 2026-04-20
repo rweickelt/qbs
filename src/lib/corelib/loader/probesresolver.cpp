@@ -162,7 +162,7 @@ void ProbesResolver::resolveProbe(ProductContext &productContext, Item *parent,
         configureScope.setValue(engine->newObject());
         for (const ProbeProperty &b : probeBindings)
             setJsProperty(ctx, configureScope, b.first, JS_DupValue(ctx, b.second));
-        engine->clearRequestedProperties();
+        engine->clearTrackedScriptAccesses();
         const JSValue scopes[] = {
             fileCtxScopes.fileScope, fileCtxScopes.importScope, configureScope};
         ScopedJsValue sv(

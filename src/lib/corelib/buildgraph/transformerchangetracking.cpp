@@ -68,6 +68,12 @@ public:
     bool scannerNeedsInvalidation() const;
 
 private:
+    bool scriptNeedsReRun(
+        const TrackedScriptAccesses &trackedAccesses,
+        bool checkImports,
+        const FileTime &referenceTime,
+        const char *debugDetails) const;
+
     QVariantMap propertyMapByKind(const Property &property) const;
     bool checkForPropertyChange(const Property &restoredProperty,
                                 const QVariantMap &newProperties) const;
@@ -262,78 +268,22 @@ const ResolvedProduct *TrafoChangeTracker::getProduct(const QString &name) const
 
 bool TrafoChangeTracker::prepareScriptNeedsRerun() const
 {
-    for (const Property &property : std::as_const(m_transformer->propertiesRequestedInPrepareScript)) {
-        if (checkForPropertyChange(property, propertyMapByKind(property)))
-            return true;
-    }
-
-    if (checkForImportFileChange(m_transformer->importedFilesUsedInPrepareScript,
-                                 m_transformer->lastPrepareScriptExecutionTime, "prepare script")) {
-        return true;
-    }
-
-    for (auto it = m_transformer->propertiesRequestedFromArtifactInPrepareScript.constBegin();
-         it != m_transformer->propertiesRequestedFromArtifactInPrepareScript.constEnd(); ++it) {
-        for (const Property &property : std::as_const(it.value())) {
-            const Artifact * const artifact = getArtifact(it.key(), property.productName);
-            if (!artifact)
-                return true;
-            if (property.kind == Property::PropertyInArtifact) {
-                if (sorted(artifact->fileTags().toStringList()) != property.value.toStringList())
-                    return true;
-                continue;
-            }
-            if (checkForPropertyChange(property, artifact->properties->value()))
-                return true;
-        }
-    }
-
-    if (!m_transformer->depsRequestedInPrepareScript.isUpToDate(m_product->topLevelProject()))
-        return true;
-    if (!m_transformer->artifactsMapRequestedInPrepareScript.isUpToDate(
-                m_product->topLevelProject())) {
-        return true;
-    }
-    if (!areExportedModulesUpToDate(m_transformer->exportedModulesAccessedInPrepareScript))
-        return true;
-
-    return false;
+    return scriptNeedsReRun(
+        m_transformer->trackedAccessesFromPrepareScript,
+        true,
+        m_transformer->lastPrepareScriptExecutionTime,
+        "prepare script");
 }
 
 bool TrafoChangeTracker::commandsNeedRerun() const
 {
-    for (const Property &property : std::as_const(m_transformer->propertiesRequestedInCommands)) {
-        if (checkForPropertyChange(property, propertyMapByKind(property)))
-            return true;
-    }
-
-    for (auto it = m_transformer->propertiesRequestedFromArtifactInCommands.cbegin();
-         it != m_transformer->propertiesRequestedFromArtifactInCommands.cend(); ++it) {
-        for (const Property &property : std::as_const(it.value())) {
-            const Artifact * const artifact = getArtifact(it.key(), property.productName);
-            if (!artifact)
-                return true;
-            if (property.kind == Property::PropertyInArtifact) {
-                if (sorted(artifact->fileTags().toStringList()) != property.value.toStringList())
-                    return true;
-                continue;
-            }
-            if (checkForPropertyChange(property, artifact->properties->value()))
-                return true;
-        }
-    }
-
-    if (checkForImportFileChange(m_transformer->importedFilesUsedInCommands,
-                                 m_transformer->lastCommandExecutionTime, "command")) {
+    if (scriptNeedsReRun(
+            m_transformer->trackedAccessesFromCommands,
+            true,
+            m_transformer->lastCommandExecutionTime,
+            "command")) {
         return true;
     }
-
-    if (!m_transformer->depsRequestedInCommands.isUpToDate(m_product->topLevelProject()))
-        return true;
-    if (!m_transformer->artifactsMapRequestedInCommands.isUpToDate(m_product->topLevelProject()))
-        return true;
-    if (!areExportedModulesUpToDate(m_transformer->exportedModulesAccessedInCommands))
-        return true;
 
     // TODO: Also track env access in JS commands and prepare scripts
     for (const AbstractCommandPtr &c : std::as_const(m_transformer->commands.commands())) {
@@ -359,15 +309,28 @@ bool TrafoChangeTracker::commandsNeedRerun() const
 
 bool TrafoChangeTracker::scannerNeedsInvalidation() const
 {
-    for (const Property &property : std::as_const(m_scanner->propertiesRequested)) {
+    return scriptNeedsReRun(*m_scanner->scriptAccesses, false, {}, "scanner");
+}
+
+bool TrafoChangeTracker::scriptNeedsReRun(
+    const TrackedScriptAccesses &trackedAccesses,
+    bool checkImports,
+    const FileTime &referenceTime,
+    const char *debugDetails) const
+{
+    for (const Property &property : std::as_const(trackedAccesses.properties)) {
         if (checkForPropertyChange(property, propertyMapByKind(property)))
             return true;
     }
 
-    // TODO: imports, deps, artifacts map, exported modules? (See prepare script checker)
+    if (checkImports
+        && checkForImportFileChange(
+            trackedAccesses.importedFilesUsed, referenceTime, debugDetails)) {
+        return true;
+    }
 
-    for (auto it = m_scanner->propertiesRequestedFromArtifacts.cbegin();
-         it != m_scanner->propertiesRequestedFromArtifacts.cend();
+    for (auto it = trackedAccesses.propertiesViaArtifact.constBegin();
+         it != trackedAccesses.propertiesViaArtifact.constEnd();
          ++it) {
         for (const Property &property : std::as_const(it.value())) {
             const Artifact * const artifact = getArtifact(it.key(), property.productName);
@@ -382,6 +345,13 @@ bool TrafoChangeTracker::scannerNeedsInvalidation() const
                 return true;
         }
     }
+
+    if (!trackedAccesses.dependenciesMap.isUpToDate(m_product->topLevelProject()))
+        return true;
+    if (!trackedAccesses.artifactsMaps.isUpToDate(m_product->topLevelProject()))
+        return true;
+    if (!areExportedModulesUpToDate(trackedAccesses.exportedModules))
+        return true;
 
     return false;
 }

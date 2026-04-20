@@ -42,8 +42,8 @@
 
 #include "forward_decls.h"
 #include "property.h"
-#include <buildgraph/requestedartifacts.h>
-#include <buildgraph/requesteddependencies.h>
+
+#include <buildgraph/trackedscriptaccesses.h>
 #include <logging/logger.h>
 #include <tools/codelocation.h>
 #include <tools/error.h>
@@ -156,21 +156,10 @@ public:
     }
     void addPropertyRequestedFromArtifact(const Artifact *artifact, const Property &property);
     void addRequestedExport(const ResolvedProduct *product) { m_requestedExports.insert(product); }
-    void clearRequestedProperties();
-    PropertySet propertiesRequestedInScript() const { return m_propertiesRequestedInScript; }
-    QHash<QString, PropertySet> propertiesRequestedFromArtifact() const {
-        return m_propertiesRequestedFromArtifact;
-    }
-    Set<const ResolvedProduct *> productsWithRequestedDependencies() const
-    {
-        return m_productsWithRequestedDependencies;
-    }
-    RequestedDependencies requestedDependencies() const
-    {
-        return RequestedDependencies(m_productsWithRequestedDependencies);
-    }
-    RequestedArtifacts requestedArtifacts() const { return m_requestedArtifacts; }
-    Set<const ResolvedProduct *> requestedExports() const { return m_requestedExports; }
+    void clearTrackedScriptAccesses();
+
+    TrackedScriptAccesses getAndClearTrackedScriptAccesses();
+    void mergeAndClearTrackedScriptAccesses(TrackedScriptAccesses &accesses);
 
     void addImportRequestedInScript(quintptr importValueId);
     std::vector<QString> importedFilesUsedInScript() const;

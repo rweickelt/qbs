@@ -207,7 +207,7 @@ TopLevelProjectPtr ProjectResolver::resolve()
     if (d->engine->checkForJsError({}))
         d->engine->getAndClearJsError();
     d->engine->clearImportsCache();
-    d->engine->clearRequestedProperties();
+    d->engine->clearTrackedScriptAccesses();
     d->engine->enableProfiling(d->setupParams.logElapsedTime());
     d->logger.clearWarnings();
     EvalContextSwitcher evalContextSwitcher(d->engine, EvalContext::PropertyEvaluation);

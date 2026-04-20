@@ -100,12 +100,7 @@ void ExecutorJob::run(Transformer *t)
         return;
     }
 
-    t->propertiesRequestedInCommands.clear();
-    t->propertiesRequestedFromArtifactInCommands.clear();
-    t->importedFilesUsedInCommands.clear();
-    t->depsRequestedInCommands.clear();
-    t->artifactsMapRequestedInCommands.clear();
-    t->exportedModulesAccessedInCommands.clear();
+    t->trackedAccessesFromCommands.clear();
     t->lastCommandExecutionTime = FileTime::currentTime();
     QBS_CHECK(!t->outputs.empty());
     m_processCommandExecutor->setProcessEnvironment(

@@ -840,9 +840,7 @@ bool BuildGraphLoader::checkForScannerChanges(
         for (const ResolvedScannerPtr &newScanner : newlyResolvedProduct->scanners) {
             if (*oldScanner == *newScanner) {
                 found = true;
-                newScanner->propertiesRequested = oldScanner->propertiesRequested;
-                newScanner->propertiesRequestedFromArtifacts
-                    = oldScanner->propertiesRequestedFromArtifacts;
+                newScanner->scriptAccesses = std::move(oldScanner->scriptAccesses);
                 break;
             }
         }

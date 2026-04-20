@@ -48,6 +48,7 @@
 #include <buildgraph/buildgraph.h>
 #include <buildgraph/productbuilddata.h>
 #include <buildgraph/projectbuilddata.h>
+#include <buildgraph/trackedscriptaccesses.h>
 #include <buildgraph/transformer.h>
 #include <jsextensions/jsextensions.h>
 #include <language/value.h>
@@ -1024,6 +1025,12 @@ JSValue PrivateScriptFunction::getFunction(ScriptEngine *engine, const QString &
     }
     return scriptFunction;
 }
+
+ResolvedScanner::ResolvedScanner()
+    : scriptAccesses(std::make_unique<TrackedScriptAccesses>())
+{}
+
+ResolvedScanner::~ResolvedScanner() = default;
 
 } // namespace Internal
 } // namespace qbs

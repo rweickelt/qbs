@@ -149,22 +149,7 @@ private:
             scopeChain << importScopeForSourceCode;
         const ScopedJsValue res(ctx, scriptEngine->evaluate(JsValueOwner::Caller, cmd->sourceCode(),
                                                             {}, 1, scopeChain));
-        transformer->propertiesRequestedInCommands
-                += scriptEngine->propertiesRequestedInScript();
-        unite(transformer->propertiesRequestedFromArtifactInCommands,
-              scriptEngine->propertiesRequestedFromArtifact());
-        const std::vector<QString> &importFilesUsedInCommand
-                = scriptEngine->importedFilesUsedInScript();
-        transformer->importedFilesUsedInCommands.insert(
-                    transformer->importedFilesUsedInCommands.cend(),
-                    importFilesUsedInCommand.cbegin(), importFilesUsedInCommand.cend());
-        transformer->depsRequestedInCommands.add(scriptEngine->productsWithRequestedDependencies());
-        transformer->artifactsMapRequestedInCommands.unite(scriptEngine->requestedArtifacts());
-        for (const ResolvedProduct * const p : scriptEngine->requestedExports()) {
-            transformer->exportedModulesAccessedInCommands.insert(
-                        std::make_pair(p->uniqueName(), p->exportedModule));
-        }
-        scriptEngine->clearRequestedProperties();
+        scriptEngine->mergeAndClearTrackedScriptAccesses(transformer->trackedAccessesFromCommands);
         if (scriptEngine->checkForJsError(cmd->codeLocation())) {
             // ### We don't know the line number of the command's sourceCode property assignment.
             const ErrorInfo e = scriptEngine->getAndClearJsError();

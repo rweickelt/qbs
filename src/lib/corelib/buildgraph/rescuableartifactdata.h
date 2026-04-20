@@ -41,15 +41,11 @@
 #define QBS_RESCUABLEARTIFACTDATA_H
 
 #include "forward_decls.h"
-#include "requestedartifacts.h"
-#include "requesteddependencies.h"
 #include "rulecommands.h"
+#include "trackedscriptaccesses.h"
 
 #include <language/filetags.h>
 #include <language/forward_decls.h>
-#include <language/language.h>
-#include <language/property.h>
-#include <language/propertymapinternal.h>
 #include <tools/filetime.h>
 #include <tools/persistence.h>
 
@@ -65,19 +61,18 @@ class QBS_AUTOTEST_EXPORT RescuableArtifactData
 public:
     template<PersistentPool::OpType opType> void completeSerializationOp(PersistentPool &pool)
     {
-        pool.serializationOp<opType>(timeStamp, children, fileDependencies, knownOutOfDate,
-                                     propertiesRequestedInPrepareScript,
-                                     propertiesRequestedInCommands,
-                                     propertiesRequestedFromArtifactInPrepareScript,
-                                     propertiesRequestedFromArtifactInCommands,
-                                     importedFilesUsedInPrepareScript, importedFilesUsedInCommands,
-                                     depsRequestedInPrepareScript, depsRequestedInCommands,
-                                     commands, artifactsMapRequestedInPrepareScript,
-                                     artifactsMapRequestedInCommands,
-                                     exportedModulesAccessedInPrepareScript,
-                                     exportedModulesAccessedInCommands,
-                                     lastPrepareScriptExecutionTime,
-                                     lastCommandExecutionTime, fileTags, properties);
+        pool.serializationOp<opType>(
+            timeStamp,
+            children,
+            fileDependencies,
+            knownOutOfDate,
+            trackedAccessesFromPrepareScript,
+            trackedAccessesFromCommands,
+            commands,
+            lastPrepareScriptExecutionTime,
+            lastCommandExecutionTime,
+            fileTags,
+            properties);
     }
 
     bool isValid() const { return !!properties; }
@@ -110,20 +105,10 @@ public:
 
     // Per-Transformer data
     CommandList commands;
-    PropertySet propertiesRequestedInPrepareScript;
-    PropertySet propertiesRequestedInCommands;
-    PropertyHash propertiesRequestedFromArtifactInPrepareScript;
-    PropertyHash propertiesRequestedFromArtifactInCommands;
-    std::vector<QString> importedFilesUsedInPrepareScript;
-    std::vector<QString> importedFilesUsedInCommands;
-    RequestedDependencies depsRequestedInPrepareScript;
-    RequestedDependencies depsRequestedInCommands;
-    RequestedArtifacts artifactsMapRequestedInPrepareScript;
-    RequestedArtifacts artifactsMapRequestedInCommands;
+    TrackedScriptAccesses trackedAccessesFromPrepareScript;
+    TrackedScriptAccesses trackedAccessesFromCommands;
     FileTime lastPrepareScriptExecutionTime;
     FileTime lastCommandExecutionTime;
-    std::unordered_map<QString, ExportedModule> exportedModulesAccessedInPrepareScript;
-    std::unordered_map<QString, ExportedModule> exportedModulesAccessedInCommands;
     bool knownOutOfDate = false;
 
     // Only needed for API purposes

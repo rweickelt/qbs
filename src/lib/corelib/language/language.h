@@ -490,6 +490,7 @@ class ResolvedScanner
 {
 public:
     static ResolvedScannerPtr create() { return ResolvedScannerPtr(new ResolvedScanner); }
+    ~ResolvedScanner();
 
     ResolvedModuleConstPtr module;
     FileTags inputs;
@@ -499,8 +500,7 @@ public:
     CodeLocation location;
     PrivateScriptFunction searchPathsScript;
     PrivateScriptFunction scanScript;
-    PropertySet propertiesRequested;
-    QHash<QString, PropertySet> propertiesRequestedFromArtifacts;
+    std::unique_ptr<TrackedScriptAccesses> scriptAccesses;
 
     template<PersistentPool::OpType opType> void completeSerializationOp(PersistentPool &pool)
     {
@@ -513,12 +513,11 @@ public:
             location,
             searchPathsScript,
             scanScript,
-            propertiesRequested,
-            propertiesRequestedFromArtifacts);
+            scriptAccesses);
     }
 
 private:
-    ResolvedScanner() = default;
+    ResolvedScanner();
 };
 bool operator==(const ResolvedScanner &s1, const ResolvedScanner &s2);
 inline bool operator!=(const ResolvedScanner &s1, const ResolvedScanner &s2)

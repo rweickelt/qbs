@@ -196,9 +196,7 @@ QStringList DependencyScanner::evaluate(
             int(args.size()),
             args.data()));
 
-    m_scanner->propertiesRequested += m_engine->propertiesRequestedInScript();
-    unite(m_scanner->propertiesRequestedFromArtifacts, m_engine->propertiesRequestedFromArtifact());
-    m_engine->clearRequestedProperties();
+    m_engine->mergeAndClearTrackedScriptAccesses(*m_scanner->scriptAccesses);
 
     if (m_engine->checkForJsError(script.location())) {
         ErrorInfo err = m_engine->getAndClearJsError();

@@ -55,7 +55,6 @@
 #include <QtCore/qdir.h>
 
 #include <algorithm>
-#include <vector>
 
 namespace qbs {
 namespace Internal {
@@ -265,17 +264,8 @@ void Transformer::createCommands(ScriptEngine *engine, const PrivateScriptFuncti
                 engine->context(),
                 JS_Call(engine->context(), function, engine->globalObject(),
                 int(argv.size()), argv.data()));
-    propertiesRequestedInPrepareScript = engine->propertiesRequestedInScript();
-    propertiesRequestedFromArtifactInPrepareScript = engine->propertiesRequestedFromArtifact();
-    importedFilesUsedInPrepareScript = engine->importedFilesUsedInScript();
-    depsRequestedInPrepareScript = engine->requestedDependencies();
-    artifactsMapRequestedInPrepareScript = engine->requestedArtifacts();
+    trackedAccessesFromPrepareScript = engine->getAndClearTrackedScriptAccesses();
     lastPrepareScriptExecutionTime = FileTime::currentTime();
-    for (const ResolvedProduct * const p : engine->requestedExports()) {
-        exportedModulesAccessedInPrepareScript.insert(std::make_pair(p->uniqueName(),
-                                                                     p->exportedModule));
-    }
-    engine->clearRequestedProperties();
     engine->throwOnJsError(script.location());
     commands.clear();
     if (JS_IsArray(scriptValue)) {
@@ -303,46 +293,22 @@ void Transformer::rescueChangeTrackingData(const TransformerConstPtr &other)
 {
     if (!other)
         return;
-    propertiesRequestedInPrepareScript = other->propertiesRequestedInPrepareScript;
-    propertiesRequestedInCommands = other->propertiesRequestedInCommands;
-    propertiesRequestedFromArtifactInPrepareScript
-            = other->propertiesRequestedFromArtifactInPrepareScript;
-    propertiesRequestedFromArtifactInCommands = other->propertiesRequestedFromArtifactInCommands;
-    importedFilesUsedInPrepareScript = other->importedFilesUsedInPrepareScript;
-    importedFilesUsedInCommands = other->importedFilesUsedInCommands;
-    depsRequestedInPrepareScript = other->depsRequestedInPrepareScript;
-    depsRequestedInCommands = other->depsRequestedInCommands;
-    artifactsMapRequestedInPrepareScript = other->artifactsMapRequestedInPrepareScript;
-    artifactsMapRequestedInCommands = other->artifactsMapRequestedInCommands;
+    trackedAccessesFromPrepareScript = other->trackedAccessesFromPrepareScript;
+    trackedAccessesFromCommands = other->trackedAccessesFromCommands;
     lastCommandExecutionTime = other->lastCommandExecutionTime;
     lastPrepareScriptExecutionTime = other->lastPrepareScriptExecutionTime;
     prepareScriptNeedsChangeTracking = other->prepareScriptNeedsChangeTracking;
     commandsNeedChangeTracking = other->commandsNeedChangeTracking;
     markedForRerun = other->markedForRerun;
-    exportedModulesAccessedInPrepareScript = other->exportedModulesAccessedInPrepareScript;
-    exportedModulesAccessedInCommands = other->exportedModulesAccessedInCommands;
 }
 
 void Transformer::rescueFromArtifactData(RescuableArtifactData &&rad)
 {
     if (rad.lastPrepareScriptExecutionTime >= lastPrepareScriptExecutionTime) {
-        propertiesRequestedInPrepareScript = std::move(rad.propertiesRequestedInPrepareScript);
-        propertiesRequestedFromArtifactInPrepareScript = std::move(
-            rad.propertiesRequestedFromArtifactInPrepareScript);
-        importedFilesUsedInPrepareScript = std::move(rad.importedFilesUsedInPrepareScript);
-        depsRequestedInPrepareScript = std::move(rad.depsRequestedInPrepareScript);
-        artifactsMapRequestedInPrepareScript = std::move(rad.artifactsMapRequestedInPrepareScript);
-        exportedModulesAccessedInPrepareScript = std::move(
-            rad.exportedModulesAccessedInPrepareScript);
+        trackedAccessesFromPrepareScript = std::move(rad.trackedAccessesFromPrepareScript);
         lastPrepareScriptExecutionTime = rad.lastPrepareScriptExecutionTime;
     }
-    propertiesRequestedInCommands = std::move(rad.propertiesRequestedInCommands);
-    propertiesRequestedFromArtifactInCommands = std::move(
-        rad.propertiesRequestedFromArtifactInCommands);
-    importedFilesUsedInCommands = std::move(rad.importedFilesUsedInCommands);
-    depsRequestedInCommands = std::move(rad.depsRequestedInCommands);
-    artifactsMapRequestedInCommands = std::move(rad.artifactsMapRequestedInCommands);
-    exportedModulesAccessedInCommands = std::move(rad.exportedModulesAccessedInCommands);
+    trackedAccessesFromCommands = std::move(rad.trackedAccessesFromCommands);
     lastCommandExecutionTime = rad.lastCommandExecutionTime;
     commandsNeedChangeTracking = true;
     markedForRerun = markedForRerun || rad.knownOutOfDate;
@@ -351,19 +317,8 @@ void Transformer::rescueFromArtifactData(RescuableArtifactData &&rad)
 RescuableArtifactData Transformer::rescueToArtifactData() const
 {
     RescuableArtifactData result;
-    result.propertiesRequestedInPrepareScript = propertiesRequestedInPrepareScript;
-    result.propertiesRequestedInCommands = propertiesRequestedInCommands;
-    result.propertiesRequestedFromArtifactInPrepareScript
-        = propertiesRequestedFromArtifactInPrepareScript;
-    result.propertiesRequestedFromArtifactInCommands = propertiesRequestedFromArtifactInCommands;
-    result.importedFilesUsedInPrepareScript = importedFilesUsedInPrepareScript;
-    result.importedFilesUsedInCommands = importedFilesUsedInCommands;
-    result.depsRequestedInPrepareScript = depsRequestedInPrepareScript;
-    result.depsRequestedInCommands = depsRequestedInCommands;
-    result.artifactsMapRequestedInPrepareScript = artifactsMapRequestedInPrepareScript;
-    result.artifactsMapRequestedInCommands = artifactsMapRequestedInCommands;
-    result.exportedModulesAccessedInPrepareScript = exportedModulesAccessedInPrepareScript;
-    result.exportedModulesAccessedInCommands = exportedModulesAccessedInCommands;
+    result.trackedAccessesFromPrepareScript = trackedAccessesFromPrepareScript;
+    result.trackedAccessesFromCommands = trackedAccessesFromCommands;
     result.lastCommandExecutionTime = lastCommandExecutionTime;
     result.lastPrepareScriptExecutionTime = lastPrepareScriptExecutionTime;
     result.knownOutOfDate = markedForRerun;

@@ -1336,8 +1336,7 @@ void Executor::prepareProducts()
                 scannersToInvalidate.insert(
                     !scanner->pluginName.isEmpty() ? scanner->pluginName
                                                    : scanner->scanScript.sourceCode());
-                scanner->propertiesRequested.clear();
-                scanner->propertiesRequestedFromArtifacts.clear();
+                scanner->scriptAccesses->clear();
                 scannersInvalidated = true;
             }
         }

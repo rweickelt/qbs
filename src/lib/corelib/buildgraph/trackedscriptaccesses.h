@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2026 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qbs.
@@ -36,42 +36,45 @@
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
-#ifndef QBS_BG_FORWARD_DECLS_H
-#define QBS_BG_FORWARD_DECLS_H
+#pragma once
 
-#include <memory>
+#include "requestedartifacts.h"
+#include "requesteddependencies.h"
 
-namespace qbs {
-namespace Internal {
+#include <language/language.h>
+#include <language/property.h>
+#include <tools/persistence.h>
 
-class Artifact;
-class BuildGraphNode;
-class ProjectBuildData;
-class ProductBuildData;
-class RuleNode;
-class TrackedScriptAccesses;
+#include <QHash>
+#include <QString>
 
-class Transformer;
-using TransformerPtr = std::shared_ptr<Transformer>;
-using TransformerConstPtr = std::shared_ptr<const Transformer>;
+#include <unordered_map>
+#include <vector>
 
-class RulesEvaluationContext;
-using RulesEvaluationContextPtr = std::shared_ptr<RulesEvaluationContext>;
+namespace qbs::Internal {
+class TrackedScriptAccesses
+{
+public:
+    void clear() { *this = {}; }
 
-class AbstractCommand;
-using AbstractCommandPtr = std::shared_ptr<AbstractCommand>;
+    template<PersistentPool::OpType opType>
+    void completeSerializationOp(PersistentPool &pool)
+    {
+        pool.serializationOp<opType>(
+            properties,
+            propertiesViaArtifact,
+            dependenciesMap,
+            artifactsMaps,
+            importedFilesUsed,
+            exportedModules);
+    }
 
-class ProcessCommand;
-using ProcessCommandPtr = std::shared_ptr<ProcessCommand>;
+    PropertySet properties;
+    QHash<QString, PropertySet> propertiesViaArtifact;
+    RequestedDependencies dependenciesMap;
+    RequestedArtifacts artifactsMaps;
+    std::vector<QString> importedFilesUsed;
+    std::unordered_map<QString, ExportedModule> exportedModules;
+};
 
-class JavaScriptCommand;
-using JavaScriptCommandPtr = std::shared_ptr<JavaScriptCommand>;
-
-template<typename T> class Set;
-using ArtifactSet = Set<Artifact *>;
-using NodeSet = Set<BuildGraphNode *>;
-
-} // namespace Internal
-} // namespace qbs
-
-#endif // QBS_BG_FORWARD_DECLS_H
+} // namespace qbs::Internal
