@@ -383,16 +383,21 @@ void ScriptEngine::addImportRequestedInScript(quintptr importValueId)
         m_importsRequestedInScript.push_back(importValueId);
 }
 
-std::vector<QString> ScriptEngine::importedFilesUsedInScript() const
+ImportReferences ScriptEngine::importedFilesUsedInScript() const
 {
-    std::vector<QString> files;
+    ImportReferences files;
     for (qint64 usedImport : m_importsRequestedInScript) {
         const auto it = m_filePathsPerImport.find(usedImport);
         QBS_CHECK(it != m_filePathsPerImport.cend());
         const std::vector<QString> &filePathsForImport = it->second;
-        for (const QString &fp : filePathsForImport)
-            if (!contains(files, fp))
-                files.push_back(fp);
+        for (const QString &fp : filePathsForImport) {
+            const auto fileIt = std::find_if(
+                files.cbegin(), files.cend(), [&fp](const std::pair<QString, FileTime> &entry) {
+                    return entry.first == fp;
+                });
+            if (fileIt == files.cend())
+                files.push_back(std::make_pair(fp, FileTime::currentTime()));
+        }
     }
     return files;
 }
@@ -1146,9 +1151,16 @@ void ScriptEngine::mergeAndClearTrackedScriptAccesses(TrackedScriptAccesses &acc
 {
     accesses.properties += m_propertiesRequestedInScript;
     unite(accesses.propertiesViaArtifact, m_propertiesRequestedFromArtifact);
-    const std::vector<QString> &importFilesUsed = importedFilesUsedInScript();
-    accesses.importedFilesUsed.insert(
-        accesses.importedFilesUsed.cend(), importFilesUsed.cbegin(), importFilesUsed.cend());
+    const ImportReferences &importFilesUsed = importedFilesUsedInScript();
+    for (const ImportReference &ref : importFilesUsed) {
+        if (const auto it = std::find_if(
+                accesses.importedFilesUsed.cbegin(),
+                accesses.importedFilesUsed.cend(),
+                [&ref](const ImportReference &entry) { return entry.first == ref.first; });
+            it == accesses.importedFilesUsed.cend()) {
+            accesses.importedFilesUsed.push_back(ref);
+        }
+    }
     accesses.dependenciesMap.add(m_productsWithRequestedDependencies);
     accesses.artifactsMaps.unite(m_requestedArtifacts);
     for (const ResolvedProduct * const p : m_requestedExports)

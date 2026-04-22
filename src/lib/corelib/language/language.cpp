@@ -107,12 +107,11 @@ void FileTagger::setPatterns(const QStringList &patterns)
     }
 }
 
-
-bool Probe::needsReconfigure(const FileTime &referenceTime) const
+bool Probe::needsReconfigure() const
 {
-    const auto criterion = [referenceTime](const QString &filePath) {
-        FileInfo fi(filePath);
-        return !fi.exists() || fi.lastModified() > referenceTime;
+    const auto criterion = [](const ImportReference &importRef) {
+        FileInfo fi(importRef.first);
+        return !fi.exists() || fi.lastModified() > importRef.second;
     };
     return Internal::any_of(m_importedFilesUsed, criterion);
 }

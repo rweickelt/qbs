@@ -162,7 +162,7 @@ public:
     void mergeAndClearTrackedScriptAccesses(TrackedScriptAccesses &accesses);
 
     void addImportRequestedInScript(quintptr importValueId);
-    std::vector<QString> importedFilesUsedInScript() const;
+    ImportReferences importedFilesUsedInScript() const;
 
     void addExternallyCachedValue(JSValue *v) { m_externallyCachedValues.push_back(v); }
 

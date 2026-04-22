@@ -119,7 +119,7 @@ public:
         const QString &configureScript,
         const QVariantMap &initialProperties,
         const QMap<QString, VariantValuePtr> &values,
-        const std::vector<QString> &importedFilesUsed)
+        const ImportReferences &importedFilesUsed)
     {
         return ProbeConstPtr(new Probe(
             globalId,
@@ -137,8 +137,8 @@ public:
     const QString &configureScript() const { return m_configureScript; }
     const QVariantMap &initialProperties() const { return m_initialProperties; }
     const QMap<QString, VariantValuePtr> &values() const { return m_values; }
-    const std::vector<QString> &importedFilesUsed() const { return m_importedFilesUsed; }
-    bool needsReconfigure(const FileTime &referenceTime) const;
+    const ImportReferences &importedFilesUsed() const { return m_importedFilesUsed; }
+    bool needsReconfigure() const;
 
     template<PersistentPool::OpType opType> void completeSerializationOp(PersistentPool &pool)
     {
@@ -166,7 +166,7 @@ private:
         QString configureScript,
         QVariantMap initialProperties,
         QMap<QString, VariantValuePtr> values,
-        std::vector<QString> importedFilesUsed)
+        ImportReferences importedFilesUsed)
         : m_globalId(std::move(globalId))
         , m_location(location)
         , m_configureScript(std::move(configureScript))
@@ -184,7 +184,7 @@ private:
     QString m_configureScript;
     QVariantMap m_initialProperties;
     QMap<QString, VariantValuePtr> m_values;
-    std::vector<QString> m_importedFilesUsed;
+    ImportReferences m_importedFilesUsed;
     bool m_condition = false;
 };
 

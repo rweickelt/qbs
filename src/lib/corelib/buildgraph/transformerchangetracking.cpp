@@ -69,17 +69,12 @@ public:
 
 private:
     bool scriptNeedsReRun(
-        const TrackedScriptAccesses &trackedAccesses,
-        bool checkImports,
-        const FileTime &referenceTime,
-        const char *debugDetails) const;
+        const TrackedScriptAccesses &trackedAccesses, const char *debugDetails) const;
 
     QVariantMap propertyMapByKind(const Property &property) const;
     bool checkForPropertyChange(const Property &restoredProperty,
                                 const QVariantMap &newProperties) const;
-    bool checkForImportFileChange(const std::vector<QString> &importedFiles,
-                                  const FileTime &referenceTime,
-                                  const char *context) const;
+    bool checkForImportFileChange(const ImportReferences &importedFiles, const char *context) const;
     bool isExportedModuleUpToDate(const QString &productName, const ExportedModule &module) const;
     bool areExportedModulesUpToDate(
             const std::unordered_map<QString, ExportedModule> &exportedModules) const;
@@ -180,11 +175,10 @@ bool TrafoChangeTracker::checkForPropertyChange(const Property &restoredProperty
     return false;
 }
 
-bool TrafoChangeTracker::checkForImportFileChange(const std::vector<QString> &importedFiles,
-                                                  const FileTime &referenceTime,
-                                                  const char *context) const
+bool TrafoChangeTracker::checkForImportFileChange(
+    const ImportReferences &importedFiles, const char *context) const
 {
-    for (const QString &importedFile : importedFiles) {
+    for (const auto &[importedFile, referenceTime] : importedFiles) {
         const FileInfo fi(importedFile);
         if (!fi.exists()) {
             qCDebug(lcBuildGraph) << context << "imported file" << importedFile
@@ -268,22 +262,13 @@ const ResolvedProduct *TrafoChangeTracker::getProduct(const QString &name) const
 
 bool TrafoChangeTracker::prepareScriptNeedsRerun() const
 {
-    return scriptNeedsReRun(
-        m_transformer->trackedAccessesFromPrepareScript,
-        true,
-        m_transformer->lastPrepareScriptExecutionTime,
-        "prepare script");
+    return scriptNeedsReRun(m_transformer->trackedAccessesFromPrepareScript, "prepare script");
 }
 
 bool TrafoChangeTracker::commandsNeedRerun() const
 {
-    if (scriptNeedsReRun(
-            m_transformer->trackedAccessesFromCommands,
-            true,
-            m_transformer->lastCommandExecutionTime,
-            "command")) {
+    if (scriptNeedsReRun(m_transformer->trackedAccessesFromCommands, "command"))
         return true;
-    }
 
     // TODO: Also track env access in JS commands and prepare scripts
     for (const AbstractCommandPtr &c : std::as_const(m_transformer->commands.commands())) {
@@ -309,25 +294,19 @@ bool TrafoChangeTracker::commandsNeedRerun() const
 
 bool TrafoChangeTracker::scannerNeedsInvalidation() const
 {
-    return scriptNeedsReRun(*m_scanner->scriptAccesses, false, {}, "scanner");
+    return scriptNeedsReRun(*m_scanner->scriptAccesses, "scanner");
 }
 
 bool TrafoChangeTracker::scriptNeedsReRun(
-    const TrackedScriptAccesses &trackedAccesses,
-    bool checkImports,
-    const FileTime &referenceTime,
-    const char *debugDetails) const
+    const TrackedScriptAccesses &trackedAccesses, const char *debugDetails) const
 {
     for (const Property &property : std::as_const(trackedAccesses.properties)) {
         if (checkForPropertyChange(property, propertyMapByKind(property)))
             return true;
     }
 
-    if (checkImports
-        && checkForImportFileChange(
-            trackedAccesses.importedFilesUsed, referenceTime, debugDetails)) {
+    if (checkForImportFileChange(trackedAccesses.importedFilesUsed, debugDetails))
         return true;
-    }
 
     for (auto it = trackedAccesses.propertiesViaArtifact.constBegin();
          it != trackedAccesses.propertiesViaArtifact.constEnd();

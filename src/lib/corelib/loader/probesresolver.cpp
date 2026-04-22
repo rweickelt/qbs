@@ -151,7 +151,7 @@ void ProbesResolver::resolveProbe(ProductContext &productContext, Item *parent,
         m_loaderState.topLevelProject().incrementReusedOldProbesCount();
     }
     ScopedJsValue configureScope(ctx, JS_UNDEFINED);
-    std::vector<QString> importedFilesUsedInConfigure;
+    ImportReferences importedFilesUsedInConfigure;
     if (!condition) {
         qCDebug(lcModuleLoader) << "Probe disabled; skipping";
     } else if (!resolvedProbe) {
@@ -293,8 +293,7 @@ bool ProbesResolver::probeMatches(const ProbeConstPtr &probe, bool condition,
     return probe->condition() == condition
            && qVariantMapsEqual(probe->initialProperties(), initialProperties)
            && (compareScript == CompareScript::No
-               || (probe->configureScript() == configureScript
-                   && !probe->needsReconfigure(m_loaderState.topLevelProject().lastResolveTime())));
+               || (probe->configureScript() == configureScript && !probe->needsReconfigure()));
 }
 
 } // namespace Internal

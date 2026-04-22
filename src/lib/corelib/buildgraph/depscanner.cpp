@@ -85,10 +85,7 @@ DependencyScanner::DependencyScanner(
 {
     if (!m_plugin) {
         setupScriptEngineForFile(
-            m_engine,
-            m_scanner->scanScript.fileContext(),
-            m_global,
-            ObserveMode::Disabled); // TODO: QBS-1092
+            m_engine, m_scanner->scanScript.fileContext(), m_global, ObserveMode::Enabled);
     }
 }
 

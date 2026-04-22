@@ -3420,24 +3420,22 @@ void TestBlackbox::scannerChangeTracking()
     QEXPECT_FAIL(nullptr, "Re-scanning currently implies re-building.", Continue);
     QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
 
-    // Change the helper script. From the user's point of view, this should trigger
-    // re-building, because a new dependency is added there.
+    // Change the helper script. This should trigger re-building, because a new dependency
+    // is added there.
     WAIT_FOR_NEW_TIMESTAMP();
     REPLACE_IN_FILE("subdir/helper.js", "/*'dep2.txt'*/", "'dep2.txt'");
-    QCOMPARE(runQbs(), 0);
-    QEXPECT_FAIL(nullptr, "We don't currently track changes in imported files.", Continue);
-    QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
-
-    // Do another dummy change to the scan script and verify that the new dependency
-    // from the helper script has been discovered now.
-    WAIT_FOR_NEW_TIMESTAMP();
-    REPLACE_IN_FILE("scanner-change-tracking.qbs", "scan: {", "scan: { ");
     QCOMPARE(runQbs(), 0);
     QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
     WAIT_FOR_NEW_TIMESTAMP();
     touch("dep2.txt");
     QCOMPARE(runQbs(), 0);
     QVERIFY2(m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
+    WAIT_FOR_NEW_TIMESTAMP();
+    touch("dep5.txt");
+    touch("dep6.txt");
+    touch("dep7.txt");
+    QCOMPARE(runQbs(), 0);
+    QVERIFY2(!m_qbsStdout.contains("compiling main.cpp"), m_qbsStdout.constData());
 
     // Discover dep5 via a product property. Qbs should notice that the property value
     // was read during the previous run of the scan script and that it had a different value then.

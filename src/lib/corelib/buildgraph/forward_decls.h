@@ -39,7 +39,11 @@
 #ifndef QBS_BG_FORWARD_DECLS_H
 #define QBS_BG_FORWARD_DECLS_H
 
+#include <tools/filetime.h>
+
 #include <memory>
+#include <utility>
+#include <vector>
 
 namespace qbs {
 namespace Internal {
@@ -70,6 +74,9 @@ using JavaScriptCommandPtr = std::shared_ptr<JavaScriptCommand>;
 template<typename T> class Set;
 using ArtifactSet = Set<Artifact *>;
 using NodeSet = Set<BuildGraphNode *>;
+
+using ImportReference = std::pair<QString, FileTime>;
+using ImportReferences = std::vector<ImportReference>;
 
 } // namespace Internal
 } // namespace qbs

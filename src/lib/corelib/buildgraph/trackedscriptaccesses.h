@@ -38,6 +38,7 @@
 ****************************************************************************/
 #pragma once
 
+#include "forward_decls.h"
 #include "requestedartifacts.h"
 #include "requesteddependencies.h"
 
@@ -49,7 +50,6 @@
 #include <QString>
 
 #include <unordered_map>
-#include <vector>
 
 namespace qbs::Internal {
 class TrackedScriptAccesses
@@ -73,7 +73,7 @@ public:
     QHash<QString, PropertySet> propertiesViaArtifact;
     RequestedDependencies dependenciesMap;
     RequestedArtifacts artifactsMaps;
-    std::vector<QString> importedFilesUsed;
+    ImportReferences importedFilesUsed;
     std::unordered_map<QString, ExportedModule> exportedModules;
 };
 
