@@ -67,6 +67,7 @@ private slots:
     void testFileInfo();
     void testProcessNameByPid();
     void testProfiles();
+    void testJsonSettings();
     void testSettingsMigration();
     void testSettingsMigration_data();
 

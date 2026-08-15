@@ -386,6 +386,8 @@ set(TOOLS_SOURCES
     settings.cpp
     settingscreator.cpp
     settingscreator.h
+    settingsjson.cpp
+    settingsjson.h
     settingsmodel.cpp
     settingsrepresentation.cpp
     setupprojectparameters.cpp

@@ -52,6 +52,7 @@
 #include <tools/profile.h>
 #include <tools/set.h>
 #include <tools/settings.h>
+#include <tools/settingsjson.h>
 #include <tools/setupprojectparameters.h>
 #include <tools/span.h>
 #include <tools/stringutils.h>
@@ -60,6 +61,9 @@
 #include <QtCore/qdir.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qfileinfo.h>
+#include <QtCore/qjsonarray.h>
+#include <QtCore/qjsondocument.h>
+#include <QtCore/qjsonobject.h>
 #include <QtCore/qsettings.h>
 #include <QtCore/qtemporarydir.h>
 #include <QtCore/qtemporaryfile.h>
@@ -327,6 +331,83 @@ void TestTools::testSettingsMigration_data()
     QTest::newRow("settings dir with lots of versions") << setupSettingsDir1() << true;
     QTest::newRow("settings dir with only a fallback") << setupSettingsDir2() << true;
     QTest::newRow("no previous settings") << setupSettingsDir3() << false;
+}
+
+void TestTools::testJsonSettings()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString filePath = dir.path() + QLatin1String("/settings.json");
+
+    const QVariantMap nestedMap{{QStringLiteral("enabled"), true}, {QStringLiteral("count"), 7}};
+    const QVariantMap map{
+        {QStringLiteral("boolean"), true},
+        {QStringLiteral("integer"), 23},
+        {QStringLiteral("string"), QStringLiteral("map string")},
+        {QStringLiteral("object"), nestedMap}};
+    const QList<std::pair<QString, QVariant>> values{
+        {QStringLiteral("boolean"), true},
+        {QStringLiteral("integer"), 42},
+        {QStringLiteral("string"), QStringLiteral("a string")},
+        {QStringLiteral("object"), map},
+        {QStringLiteral("profiles/gcc/cpp/compilerPath"), QStringLiteral("/usr/bin/g++")}};
+
+    {
+        QSettings settings(filePath, jsonSettingsFormat());
+        for (const auto &[key, value] : values)
+            settings.setValue(key, value);
+        settings.beginWriteArray(QStringLiteral("logins"));
+        settings.setArrayIndex(0);
+        settings.setValue(QStringLiteral("userName"), QStringLiteral("one"));
+        settings.setArrayIndex(1);
+        settings.setValue(QStringLiteral("userName"), QStringLiteral("two"));
+        settings.endArray();
+        settings.sync();
+        QCOMPARE(settings.status(), QSettings::NoError);
+    }
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QJsonObject json = QJsonDocument::fromJson(file.readAll()).object();
+    QCOMPARE(
+        json.value(QStringLiteral("profiles"))
+            .toObject()
+            .value(QStringLiteral("gcc"))
+            .toObject()
+            .value(QStringLiteral("cpp"))
+            .toObject()
+            .value(QStringLiteral("compilerPath"))
+            .toString(),
+        QStringLiteral("/usr/bin/g++"));
+    QVERIFY(json.value(QStringLiteral("object")).toString().startsWith(QLatin1String("@Variant(")));
+    const QJsonArray logins = json.value(QStringLiteral("logins")).toArray();
+    QCOMPARE(logins.size(), 2);
+    QCOMPARE(
+        logins.at(0).toObject().value(QStringLiteral("userName")).toString(),
+        QStringLiteral("one"));
+    QCOMPARE(
+        logins.at(1).toObject().value(QStringLiteral("userName")).toString(),
+        QStringLiteral("two"));
+
+    QSettings settings(filePath, jsonSettingsFormat());
+    for (const auto &[key, expected] : values) {
+        const QVariant actual = settings.value(key);
+        if (key == QLatin1String("integer"))
+            QCOMPARE(actual.toInt(), expected.toInt());
+        else {
+            QCOMPARE(actual.userType(), expected.userType());
+            QCOMPARE(actual, expected);
+        }
+    }
+    QCOMPARE(
+        settings.value(QStringLiteral("object")).toMap().value(QStringLiteral("object")).userType(),
+        QMetaType::QVariantMap);
+    QCOMPARE(settings.beginReadArray(QStringLiteral("logins")), 2);
+    settings.setArrayIndex(0);
+    QCOMPARE(settings.value(QStringLiteral("userName")).toString(), QStringLiteral("one"));
+    settings.setArrayIndex(1);
+    QCOMPARE(settings.value(QStringLiteral("userName")).toString(), QStringLiteral("two"));
+    settings.endArray();
 }
 
 QString TestTools::setupSettingsDir1()

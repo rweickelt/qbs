@@ -49,7 +49,14 @@ using qbs::Internal::Tr;
 
 static QString helpOptionShort() { return QStringLiteral("-h"); }
 static QString helpOptionLong() { return QStringLiteral("--help"); }
-static QString settingsDirOption() { return QStringLiteral("--settings-dir"); }
+static QString settingsDirOption()
+{
+    return QStringLiteral("--settings-dir");
+}
+static QString settingsFormatOption()
+{
+    return QStringLiteral("--settings-format");
+}
 static QString sdkDirOption() { return QStringLiteral("--sdk-dir"); }
 static QString ndkDirOption() { return QStringLiteral("--ndk-dir"); }
 static QString qtSdkDirOption() { return QStringLiteral("--qt-dir"); }
@@ -65,6 +72,7 @@ void CommandLineParser::parse(const QStringList &commandLine)
     m_ndkDir.clear();
     m_profileName.clear();
     m_settingsDir.clear();
+    m_settingsFormat = qbs::SettingsFormat::Native;
 
     if (m_commandLine.empty())
         throwError(Tr::tr("No command-line arguments provided."));
@@ -78,7 +86,11 @@ void CommandLineParser::parse(const QStringList &commandLine)
             m_helpRequested = true;
         else if (arg == settingsDirOption())
             assignOptionArgument(settingsDirOption(), m_settingsDir);
-        else if (arg == systemOption())
+        else if (arg == settingsFormatOption()) {
+            QString format;
+            assignOptionArgument(settingsFormatOption(), format);
+            m_settingsFormat = qbs::settingsFormatFromString(format);
+        } else if (arg == systemOption())
             m_settingsScope = qbs::Settings::SystemScope;
         else if (arg == sdkDirOption())
             assignOptionArgument(sdkDirOption(), m_sdkDir);
@@ -127,6 +139,8 @@ QString CommandLineParser::usageString() const
                 "projects that contain native C/C++ code.\n");
     s += Tr::tr("If a Qt path is also given, the profile will be suitable for developing "
                 "Qt applications for Android.\n");
+    s += Tr::tr("Use %1 with json, native or ini to select the settings format.\n")
+             .arg(settingsFormatOption());
     return s;
 }
 

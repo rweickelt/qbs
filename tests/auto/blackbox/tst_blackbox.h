@@ -299,6 +299,7 @@ private slots:
     void protobufLibraryInstall();
     void pseudoMultiplexing();
     void qbsConfig();
+    void qbsConfigSettingsFormat();
     void qbsConfigAddProfile();
     void qbsConfigAddProfile_data();
     void qbsConfigImport();

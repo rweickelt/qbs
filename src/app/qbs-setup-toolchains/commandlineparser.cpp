@@ -50,6 +50,10 @@ static QString helpOptionLong() { return QStringLiteral("--help"); }
 static QString detectOption() { return QStringLiteral("--detect"); }
 static QString typeOption() { return QStringLiteral("--type"); }
 static QString settingsDirOption() { return QStringLiteral("--settings-dir"); }
+static QString settingsFormatOption()
+{
+    return QStringLiteral("--settings-format");
+}
 static QString systemOption() { return QStringLiteral("--system"); }
 
 void CommandLineParser::parse(const QStringList &commandLine)
@@ -63,6 +67,7 @@ void CommandLineParser::parse(const QStringList &commandLine)
     m_toolchainType.clear();
     m_profileName.clear();
     m_settingsDir.clear();
+    m_settingsFormat = qbs::SettingsFormat::Native;
 
     if (m_commandLine.empty())
         throwError(Tr::tr("No command-line arguments provided."));
@@ -82,6 +87,11 @@ void CommandLineParser::parse(const QStringList &commandLine)
             assignOptionArgument(typeOption(), m_toolchainType);
         else if (arg == settingsDirOption())
             assignOptionArgument(settingsDirOption(), m_settingsDir);
+        else if (arg == settingsFormatOption()) {
+            QString format;
+            assignOptionArgument(settingsFormatOption(), format);
+            m_settingsFormat = qbs::settingsFormatFromString(format);
+        }
     }
 
     if (m_helpRequested || m_autoDetectionMode) {
@@ -126,6 +136,8 @@ QString CommandLineParser::usageString() const
     s += Tr::tr("The second form creates one profile for one toolchain. It will attempt "
                 "to find out the toolchain type automatically.\nIn case the compiler has "
                 "an unusual file name, you may need to provide the '--type' option.");
+    s += Tr::tr("\nUse %1 with json, native or ini to select the settings format.")
+             .arg(settingsFormatOption());
     return s;
 }
 

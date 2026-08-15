@@ -7628,6 +7628,54 @@ void TestBlackbox::qbsConfig()
     }
 }
 
+void TestBlackbox::qbsConfigSettingsFormat()
+{
+    QTemporaryDir settingsDir;
+    QVERIFY(settingsDir.isValid());
+
+    QbsRunParameters params("config");
+    const QStringList commonArgs{
+        "--settings-dir", settingsDir.path(), "--settings-format", "json", "--user"};
+
+    params.arguments = commonArgs + QStringList{"key.subkey.scalar", "value"};
+    QCOMPARE(runQbs(params), 0);
+    params.arguments = commonArgs + QStringList{"key.subkey.boolean", "true"};
+    QCOMPARE(runQbs(params), 0);
+    params.arguments = commonArgs + QStringList{"key.subkey.list", "[\"one\",\"two\"]"};
+    QCOMPARE(runQbs(params), 0);
+
+    params.arguments = commonArgs + QStringList{"--list", "key.subkey"};
+    QCOMPARE(runQbs(params), 0);
+    QVERIFY(m_qbsStdout.contains("key.subkey.scalar: \"value\""));
+    QVERIFY(m_qbsStdout.contains("key.subkey.boolean: true"));
+    QVERIFY(m_qbsStdout.contains("key.subkey.list: [\"one\", \"two\"]"));
+
+    QFile file(settingsDir.path() + "/qbs/" + QLatin1String(QBS_VERSION) + "/qbs.json");
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    QVERIFY(document.isObject());
+    const QJsonObject values = document.object()
+                                   .value("org")
+                                   .toObject()
+                                   .value("qt-project")
+                                   .toObject()
+                                   .value("qbs")
+                                   .toObject()
+                                   .value("key")
+                                   .toObject()
+                                   .value("subkey")
+                                   .toObject();
+    QCOMPARE(values.value("scalar").toString(), QString("value"));
+    QVERIFY(values.value("boolean").toString().startsWith("@Variant("));
+    QCOMPARE(values.value("list").toArray(), QJsonArray({QJsonValue("one"), QJsonValue("two")}));
+
+    params.expectFailure = true;
+    params.arguments = QStringList{
+        "--settings-dir", settingsDir.path(), "--settings-format", "xml", "--list"};
+    QCOMPARE(runQbs(params), 1);
+    QVERIFY(m_qbsStderr.contains("Invalid settings format 'xml'."));
+}
+
 void TestBlackbox::qbsConfigAddProfile()
 {
     QbsRunParameters params("config");

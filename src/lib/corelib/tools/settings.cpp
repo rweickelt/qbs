@@ -87,13 +87,38 @@ static QString systemSettingsBaseDir()
 #endif
 }
 
-Settings::Settings(const QString &baseDir) : Settings(baseDir, systemSettingsBaseDir()) { }
+SettingsFormat settingsFormatFromString(QStringView format)
+{
+    if (format == u"json")
+        return SettingsFormat::Json;
+    if (format == u"native")
+        return SettingsFormat::Native;
+    if (format == u"ini")
+        return SettingsFormat::Ini;
+    throw ErrorInfo(Tr::tr("Invalid settings format '%1'.").arg(format));
+}
+
+Settings::Settings(const QString &baseDir)
+    : Settings(baseDir, SettingsFormat::Native)
+{}
+
+Settings::Settings(const QString &baseDir, SettingsFormat format)
+    : Settings(baseDir, systemSettingsBaseDir(), format)
+{}
 
 Settings::Settings(const QString &baseDir, const QString &systemBaseDir)
-    : m_settings(SettingsCreator(baseDir).getQSettings()),
-      m_systemSettings(std::make_unique<QSettings>(systemBaseDir + QStringLiteral("/qbs.conf"),
-                                                   QSettings::IniFormat)),
-      m_baseDir(baseDir)
+    : Settings(baseDir, systemBaseDir, SettingsFormat::Native)
+{}
+
+Settings::Settings(const QString &baseDir, const QString &systemBaseDir, SettingsFormat format)
+    : m_settings(SettingsCreator(baseDir, format).getQSettings())
+    , m_systemSettings(
+          format == SettingsFormat::Json
+              ? SettingsCreator::createQSettings(
+                    SettingsCreator::settingsFilePath(systemBaseDir, format), format)
+              : std::make_unique<QSettings>(
+                    SettingsCreator::settingsFilePath(systemBaseDir, format), QSettings::IniFormat))
+    , m_baseDir(baseDir)
 {
     // Actual qbs settings are stored transparently within a group, because QSettings
     // can see non-qbs fallback settings e.g. from QtProject that we're not interested in.
