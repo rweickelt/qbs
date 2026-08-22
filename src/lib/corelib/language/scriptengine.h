@@ -79,7 +79,6 @@ class Artifact;
 class Evaluator;
 class JsImport;
 class PrepareScriptObserver;
-class RuleNode;
 class ScriptImporter;
 class ScriptPropertyObserver;
 
@@ -282,7 +281,8 @@ public:
 
     JSValue getArtifactScriptValue(Artifact *a, const QString &moduleName,
                                    const std::function<void(JSValue obj)> &setup);
-    void releaseInputArtifactScriptValues(const RuleNode *ruleNode);
+    void releaseArtifactScriptValues(const Artifact *artifact);
+    void releaseAllArtifactScriptValues();
 
     const JSValueList &contextStack() const { return m_contextStack; }
 

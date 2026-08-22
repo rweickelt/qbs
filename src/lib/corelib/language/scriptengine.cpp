@@ -47,7 +47,6 @@
 #include "scriptimporter.h"
 
 #include <buildgraph/artifact.h>
-#include <buildgraph/rulenode.h>
 #include <jsextensions/jsextensions.h>
 #include <logging/translator.h>
 #include <tools/error.h>
@@ -233,10 +232,8 @@ void ScriptEngine::reset()
     {
         auto guard = m_artifactsScriptValues.lock();
         auto &artifactsScriptValues = guard.get();
-        for (auto it = artifactsScriptValues.cbegin(); it != artifactsScriptValues.cend(); ++it) {
-            it.key().first->setDeregister({});
+        for (auto it = artifactsScriptValues.cbegin(); it != artifactsScriptValues.cend(); ++it)
             JS_FreeValue(m_context, it.value());
-        }
         artifactsScriptValues.clear();
     }
     m_observer->clearTrackedObjectIds();
@@ -974,19 +971,6 @@ JSValue ScriptEngine::getArtifactScriptValue(Artifact *a, const QString &moduleN
     const auto it = scriptValues.constFind(qMakePair(a, moduleName));
     if (it != scriptValues.constEnd())
         return JS_DupValue(m_context, *it);
-    a->setDeregister([this](const Artifact *a) {
-        auto guard = m_artifactsScriptValues.lock();
-        auto &scriptValues = guard.get();
-        for (auto it = scriptValues.begin(); it != scriptValues.end();) {
-            if (it.key().first == a) {
-                JS_SetOpaque(it.value(), nullptr);
-                JS_FreeValue(m_context, it.value());
-                it = scriptValues.erase(it);
-            } else {
-                ++it;
-            }
-        }
-    });
     JSValue obj = JS_NewObjectClass(context(), dataWithPtrClass());
     attachPointerTo(obj, a);
     setup(obj);
@@ -994,20 +978,28 @@ JSValue ScriptEngine::getArtifactScriptValue(Artifact *a, const QString &moduleN
     return obj;
 }
 
-void ScriptEngine::releaseInputArtifactScriptValues(const RuleNode *ruleNode)
+void ScriptEngine::releaseArtifactScriptValues(const Artifact *artifact)
 {
     auto guard = m_artifactsScriptValues.lock();
     auto &scriptValues = guard.get();
     for (auto it = scriptValues.begin(); it != scriptValues.end();) {
-        Artifact * const a = it.key().first;
-        if (ruleNode->children.contains(a)) {
-            a->setDeregister({});
+        if (it.key().first == artifact) {
+            JS_SetOpaque(it.value(), nullptr);
             JS_FreeValue(m_context, it.value());
             it = scriptValues.erase(it);
         } else {
             ++it;
         }
     }
+}
+
+void ScriptEngine::releaseAllArtifactScriptValues()
+{
+    auto guard = m_artifactsScriptValues.lock();
+    auto &scriptValues = guard.get();
+    for (auto it = scriptValues.cbegin(); it != scriptValues.cend(); ++it)
+        JS_FreeValue(m_context, it.value());
+    scriptValues.clear();
 }
 
 class JSTypeExtender

@@ -120,7 +120,7 @@ void RulesApplicator::applyRule(RuleNode *ruleNode, const ArtifactSet &inputArti
     }
     if (engine()->usesIo())
         m_ruleUsesIo = true;
-    engine()->releaseInputArtifactScriptValues(ruleNode);
+    engine()->releaseAllArtifactScriptValues();
 }
 
 void RulesApplicator::handleRemovedRuleOutputs(const ArtifactSet &inputArtifacts,
@@ -137,9 +137,14 @@ void RulesApplicator::handleRemovedRuleOutputs(const ArtifactSet &inputArtifacts
         project->buildData->removeArtifactAndExclusiveDependents(removedArtifact, logger, true,
                                                                  &artifactsToRemove);
     }
+    ScriptEngine *engine = nullptr;
+    if (project && project->buildData->evaluationContext)
+        engine = project->buildData->evaluationContext->engine();
     for (Artifact * const artifact : std::as_const(artifactsToRemove)) {
         QBS_CHECK(!inputArtifacts.contains(artifact));
         removedArtifacts << artifact->filePath();
+        if (engine)
+            engine->releaseArtifactScriptValues(artifact);
         delete artifact;
     }
 }
