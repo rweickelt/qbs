@@ -79,6 +79,7 @@ private slots:
     void lipoSymlinks();
     void lipoSymlinks_data();
     void objcArc();
+    void swift();
     void overrideInfoPlist();
     void xcode();
 

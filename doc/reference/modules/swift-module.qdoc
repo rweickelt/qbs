@@ -1,0 +1,234 @@
+/****************************************************************************
+**
+** Copyright (C) 2026 Ivan Komissarov (abbapoh@gmail.com)
+** Contact: https://www.qt.io/licensing/
+**
+** This file is part of Qbs.
+**
+** $QT_BEGIN_LICENSE:FDL$
+** Commercial License Usage
+** Licensees holding valid commercial Qt licenses may use this file in
+** accordance with the commercial license agreement provided with the
+** Software or, alternatively, in accordance with the terms contained in
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
+**
+** GNU Free Documentation License Usage
+** Alternatively, this file may be used under the terms of the GNU Free
+** Documentation License version 1.3 as published by the Free Software
+** Foundation and appearing in the file included in the packaging of
+** this file. Please review the following information to ensure
+** the GNU Free Documentation License version 1.3 requirements
+** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
+** $QT_END_LICENSE$
+**
+****************************************************************************/
+
+/*!
+    \qmltype swift
+    \inqmlmodule QbsModules
+    \since Qbs 3.5
+
+    \brief Provides Swift support.
+
+    The \c swift module builds Swift sources with \c swiftc. One product is one Swift module:
+    every \c .swift file in the product is compiled by a single \c swiftc invocation.
+    Debug builds pass \c -incremental and an output file map. Other build variants pass \c -wmo
+    and emit one object file.
+
+    \c swiftc is also the linker. Applications are linked with \c -emit-executable, dynamic
+    libraries with \c -emit-library, and static libraries with \c -emit-library -static.
+    Clang arguments are forwarded with \c -Xcc and linker arguments with \c -Xlinker.
+    It is enabled for Darwin targets.
+
+    A \l{SwiftApplication} or \l{SwiftLibrary} pulls the module in automatically:
+
+    \code
+    SwiftApplication {
+        files: ["main.swift"]
+    }
+
+    SwiftLibrary {
+        name: "Greeter"
+        type: "staticlibrary"
+        files: ["Greeter.swift"]
+    }
+    \endcode
+
+    Import the dependency's module by its \l{swift::moduleName}{moduleName}, which defaults to
+    the product's target name.
+*/
+
+/*!
+    \qmlproperty string swift::compilerPath
+
+    Absolute path to \c swiftc, discovered by the module probe.
+
+    \nodefaultvalue
+*/
+
+/*!
+    \qmlproperty string swift::moduleName
+
+    Name passed to \c -module-name. This is the name other products use in \c import.
+
+    The value must be a Swift identifier.
+
+    \defaultvalue The product's target name.
+*/
+
+/*!
+    \qmlproperty string swift::swiftLanguageVersion
+
+    Value passed to \c -swift-version. When unset, the compiler default is used.
+
+    \nodefaultvalue
+*/
+
+/*!
+    \qmlproperty string swift::optimization
+
+    Optimization level passed to \c swiftc.
+
+    \list
+        \li \c "none" passes \c -Onone
+        \li \c "fast" passes \c -O
+        \li \c "small" passes \c -Osize
+    \endlist
+
+    \defaultvalue \l{qbs::optimization}{qbs.optimization}
+*/
+
+/*!
+    \qmlproperty bool swift::debugInformation
+
+    Whether to pass \c -g.
+
+    \defaultvalue \l{qbs::debugInformation}{qbs.debugInformation}
+*/
+
+/*!
+    \qmlproperty string swift::warningLevel
+
+    \c "none" passes \c -suppress-warnings. \c "all" leaves the compiler's default warnings
+    enabled.
+
+    \defaultvalue \c{"all"}
+*/
+
+/*!
+    \qmlproperty bool swift::treatWarningsAsErrors
+
+    Whether to pass \c -warnings-as-errors.
+
+    \defaultvalue \c false
+*/
+
+/*!
+    \qmlproperty stringList swift::defines
+
+    Swift compilation conditions. Each entry is passed as \c{-D}{entry}.
+
+    \defaultvalue An empty list.
+*/
+
+/*!
+    \qmlproperty stringList swift::flags
+
+    Extra arguments appended to the \c swiftc command line as-is, both when compiling and
+    when linking.
+
+    \defaultvalue An empty list.
+*/
+
+/*!
+    \qmlproperty stringList swift::clangFlags
+
+    Arguments forwarded to clang. Each entry is prefixed with \c -Xcc.
+
+    \defaultvalue An empty list.
+*/
+
+/*!
+    \qmlproperty stringList swift::linkerFlags
+
+    Arguments forwarded to the linker. Each entry is prefixed with \c -Xlinker.
+
+    \defaultvalue An empty list.
+*/
+
+/*!
+    \qmlproperty stringList swift::importPaths
+
+    Extra directories passed with \c -I when compiling. Directories that contain
+    \c .swiftmodule files from product dependencies are added automatically.
+
+    \defaultvalue An empty list.
+*/
+
+/*!
+    \qmlproperty path swift::bridgingHeader
+
+    Objective-C bridging header passed with \c -import-objc-header. Leave unset to import
+    no bridging header.
+
+    \nodefaultvalue
+*/
+
+/*!
+    \qmlproperty bool swift::emitObjcHeader
+
+    Whether to pass \c -emit-objc-header-path and write a generated header next to the
+    Swift module.
+
+    \defaultvalue \c false
+*/
+
+/*!
+    \qmlproperty bool swift::enableLibraryEvolution
+
+    Whether to pass \c -enable-library-evolution.
+
+    \defaultvalue \c false
+*/
+
+/*!
+    \qmlproperty string swift::minimumMacosVersion
+
+    Minimum macOS version used to form \c{-target}, for example \c "14.0".
+
+    \defaultvalue The Xcode SDK version when targeting macOS. Otherwise unset.
+*/
+
+/*!
+    \qmlproperty string swift::minimumIosVersion
+
+    Minimum iOS version used to form \c{-target}.
+
+    \defaultvalue The Xcode SDK version when targeting iOS. Otherwise unset.
+*/
+
+/*!
+    \qmlproperty string swift::minimumTvosVersion
+
+    Minimum tvOS version used to form \c{-target}.
+
+    \defaultvalue The Xcode SDK version when targeting tvOS. Otherwise unset.
+*/
+
+/*!
+    \qmlproperty string swift::minimumWatchosVersion
+
+    Minimum watchOS version used to form \c{-target}.
+
+    \defaultvalue The Xcode SDK version when targeting watchOS. Otherwise unset.
+*/
+
+/*!
+    \qmlproperty string swift::sdkPath
+
+    SDK passed with \c -sdk. On an Apple toolchain this is the Xcode SDK path.
+
+    \nodefaultvalue
+*/

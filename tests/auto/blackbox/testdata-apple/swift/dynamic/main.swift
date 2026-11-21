@@ -1,0 +1,2 @@
+import DynGreeter
+print(greet())

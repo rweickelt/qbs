@@ -1427,6 +1427,44 @@ void TestBlackboxApple::xcode()
     QCOMPARE(runQbs(params), 0);
 }
 
+void TestBlackboxApple::swift()
+{
+    if (findExecutable({QStringLiteral("swiftc")}).isEmpty())
+        QSKIP("swiftc not found");
+
+    QDir::setCurrent(testDataDir + QLatin1String("/swift"));
+    QbsRunParameters build(
+        QStringList{QStringLiteral("--command-echo-mode"), QStringLiteral("command-line")});
+    QCOMPARE(runQbs(build), 0);
+    QVERIFY2(m_qbsStdout.contains("swiftc -c -module-name hello"), m_qbsStdout.constData());
+    QVERIFY2(m_qbsStdout.contains("-module-name"), m_qbsStdout.constData());
+    QVERIFY2(
+        m_qbsStdout.contains("-incremental") || m_qbsStdout.contains("-wmo"),
+        m_qbsStdout.constData());
+
+    // Device and simulator binaries are built above. They cannot be executed on the host.
+    const bool canRun = !m_qbsStdout.contains("-apple-ios")
+            && !m_qbsStdout.contains("-apple-tvos")
+            && !m_qbsStdout.contains("-apple-watchos");
+    if (!canRun)
+        return;
+
+    QbsRunParameters hello(
+        QStringLiteral("run"), QStringList{QStringLiteral("-p"), QStringLiteral("hello")});
+    QCOMPARE(runQbs(hello), 0);
+    QVERIFY2(m_qbsStdout.contains("from helper"), m_qbsStdout.constData());
+
+    QbsRunParameters staticApp(
+        QStringLiteral("run"), QStringList{QStringLiteral("-p"), QStringLiteral("staticapp")});
+    QCOMPARE(runQbs(staticApp), 0);
+    QVERIFY2(m_qbsStdout.contains("hello from static"), m_qbsStdout.constData());
+
+    QbsRunParameters dynApp(
+        QStringLiteral("run"), QStringList{QStringLiteral("-p"), QStringLiteral("dynapp")});
+    QCOMPARE(runQbs(dynApp), 0);
+    QVERIFY2(m_qbsStdout.contains("hello from dynamic"), m_qbsStdout.constData());
+}
+
 QTEST_MAIN(TestBlackboxApple)
 
 std::optional<QVariantMap> TestBlackboxApple::findXcode(int *status)
